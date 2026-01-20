@@ -162,7 +162,8 @@ CONTAINS
 
     character(len=16) :: txtaa
     txtaa = fname
-    write(95,'(2a,i6)') 'addfld - ', txtaa, numlev
+!FAB, limit file writing 
+!write(95,'(2a,i6)') 'addfld - ', txtaa, numlev
 
     return
   end subroutine addfldv1
@@ -213,11 +214,12 @@ CONTAINS
 
     character(len=16) :: txtaa
     txtaa = fname
-    if (numlev_txt(1) == 'horiz_only') then
-       write(95,'(2a,i6)') 'addfld - ', txtaa, 1
-    else
-       write(95,'(2a,i6)') 'addfld - ', txtaa, pver
-    end if
+!FAB cut out log files   
+!    if (numlev_txt(1) == 'horiz_only') then
+!       write(95,'(2a,i6)') 'addfld - ', txtaa, 1
+!    else
+!       write(95,'(2a,i6)') 'addfld - ', txtaa, pver
+!    end if
 
     return
   end subroutine addfld
@@ -243,7 +245,7 @@ CONTAINS
 
     character(len=16) :: txtaa
     txtaa = name
-    write(95,'(2a,i6)') 'adddef - ', txtaa, tindex
+!FAB    write(95,'(2a,i6)') 'adddef - ', txtaa, tindex
 
     return
   end subroutine add_default
@@ -280,7 +282,9 @@ CONTAINS
     character(len=16) :: txtaa
 
     txtaa = fname
-    write(90,'(/a,1p,20e11.3)') txtaa, field(1:ncol_for_outfld,1)
+!FAB comment out this write to avoid big files
+!revisit if debug needed
+!    write(90,'(/a,1p,20e11.3)') txtaa, field(1:ncol_for_outfld,1)
 !FAB    print*, 'ahha' , ncol_for_outfld, pver,idim  
 !    if ( txtaa == 'SOAG_sfgaex3d   ' .or. &
 !         txtaa == 'num_a2_nuc1     ' .or. &
