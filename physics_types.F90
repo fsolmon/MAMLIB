@@ -59,6 +59,7 @@ real(r8), dimension(:,:), pointer :: &
            t,       &! temperature (K)
           pmid,     &! midpoint pressure (Pa) 
           pdel,     & ! layer thickness (Pa)
+          pdeldry,  & ! dry ----
           zm,       &! midpoint height above surface (m)
           cld,      &    ! stratiform cloud fraction
           relhum,   & ! layer relative humidity

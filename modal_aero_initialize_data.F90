@@ -4,7 +4,6 @@ module modal_aero_initialize_data
   use mam_utils,             only: is_first_step
   use physconst,             only: spec_class_undefined, spec_class_cldphysics, &
        spec_class_aerosol, spec_class_gas, spec_class_other
-
   implicit none
   private
 
@@ -1557,6 +1556,7 @@ end do
         allocate (state%t(pcols,pver),stat=as)
         allocate (state%pmid(pcols,pver),stat=as)
         allocate (state%pdel(pcols,pver),stat=as)
+        allocate (state%pdeldry(pcols,pver),stat=as)
         allocate (state%zm(pcols,pver), stat=as) 
         allocate (state%cld(pcols,pver), stat=as) 
         allocate (state%relhum(pcols,pver) , stat=as)
@@ -1584,6 +1584,7 @@ end do
         state%t=0._r8
         state%pmid=0._r8
         state%pdel=0._r8
+        state%pdeldry=0._r8
         state%zm=0._r8
         state%cld=0._r8
         state%relhum =0._r8
@@ -1601,7 +1602,8 @@ end do
 
         END SUBROUTINE MAM_ALLOCATE
 
-SUBROUTINE MAM_cold_start (physta,nstop,deltat,rhmin,rhmax,tmin,tmax)
+!------------------------------------------------------------------------------------------
+       SUBROUTINE MAM_cold_start (physta,nstop,deltat,rhmin,rhmax,tmin,tmax)
 !
 !rewritten FAB
         use physconst, only: pi, mwdry,r_universal 
@@ -1721,8 +1723,9 @@ end if
    physta%pblh(:)             = 1.1e3_r8
    physta%zm(:,:)             = 3.0e3_r8
    physta%aircon(:,:)         = physta%pmid(:,:)/(r_universal*physta%t(:,:))
-   physta%cld         = 0.5_r8
-
+   physta%cld(:,:)    = 0._r8
+   physta%pdel(:,:)  = 100.e2_r8  !hpa ~ 1000m
+   physta%pdeldry(:,:) = physta%pdel(:,:) 
   end if 
 
 loffset = imozart -1

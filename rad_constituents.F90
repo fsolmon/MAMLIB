@@ -376,7 +376,8 @@ m_loop: do m = 1, ntot_amode
          refindex_aer_sw, &
          refindex_aer_lw, &
          density_aer, &
-         hygro_aer )
+         hygro_aer,  &
+         spectype )
 
       integer :: itmpa
       integer :: m_idx
@@ -385,8 +386,9 @@ m_loop: do m = 1, ntot_amode
 !     complex(r8), dimension(nlwbands), optional :: refindex_aer_lw
       complex(r8), optional, pointer :: refindex_aer_sw(:)
       complex(r8), optional, pointer :: refindex_aer_lw(:)
-      real(r8), optional :: density_aer
-      real(r8), optional :: hygro_aer
+      real(r8), optional,intent(out) :: density_aer
+      real(r8), optional,intent(out) :: hygro_aer
+      character(len=32), optional, intent(out) :: spectype
 
       integer :: itmpl, l2, l3
       character(len=120) :: errmsg
@@ -423,6 +425,10 @@ m_loop: do m = 1, ntot_amode
 
       if ( present ( hygro_aer ) ) &
          hygro_aer = spechygro_rc(itmpl)
+
+ ! FAB added this for optics
+     if ( present (spectype) ) &
+         spectype =  specname_amode_rc(itmpl)
 
       return
       end subroutine rad_cnst_get_aer_props

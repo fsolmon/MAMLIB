@@ -91,11 +91,11 @@ module physconst
 
 !---------------  Variables below here are derived from those above -----------------------
 
-!   real(r8), public           :: rga          = 1._r8/shr_const_g                 ! reciprocal of gravit
+   real(r8), public           :: rga          = 1._r8/gravit                ! reciprocal of gravit
 !   real(r8), public           :: ra           = 1._r8/shr_const_rearth            ! reciprocal of earth radius
 !   real(r8), public           :: omega        = 2.0_R8*shr_const_pi/shr_const_sday! earth rot ~ rad/sec
    real(r8), public           :: rh2o         = r_universal/mwh2o     ! Water vapor gas constant ~ J/K/kg
-!   real(r8), public           :: rair         = shr_const_rdair   ! Dry air gas constant     ~ J/K/kg
+!   real(r8), public           :: rair         = r_universal/28.966  ! Dry air gas constant     ~ J/K/kg
    real(r8), public           :: epsilo       = mwh2o/mwdry   ! ratio of h2o to dry air molecular weights 
 !   real(r8), public           :: zvir         = (shr_const_rwv/shr_const_rdair)-1.0_R8 ! (rh2o/rair) - 1
 !   real(r8), public           :: cpvir        = (shr_const_cpwv/shr_const_cpdair)-1.0_R8 ! CPWV/CPDAIR - 1.0
