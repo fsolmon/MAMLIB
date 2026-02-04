@@ -165,8 +165,17 @@ type :: mam_optics_diagnostics
    real(r8), allocatable :: vext_mode(:,:)       ! Total extinction for this mode
    real(r8), allocatable :: vssa_mode(:,:)       ! Bulk SSA for this mode
    real(r8), allocatable :: vasm_mode(:,:)       ! Bulk asymmetry for this mode
+
+   ! Per-mode optical properties across all SW bands
+   ! Stored in mamoptdiag(m) : the mode index is implicit in the array subscript.
+   ! Dimension order (pcols, pver, nswbands) keeps (i,k) contiguous for the
+   ! inner loops and lets isw vary last, matching the loop-nest order.
+   real(r8), allocatable :: tauxar(:,:,:)        ! (pcols, pver, nswbands)  opt. depth
+   real(r8), allocatable :: ssa(:,:,:)           ! (pcols, pver, nswbands)  single-scat. albedo
+   real(r8), allocatable :: g(:,:,:)             ! (pcols, pver, nswbands)  asymmetry param.
    
 end type mam_optics_diagnostics
+
    !==============================================================================
   ! GLOBAL MODULE VARIABLES - Arrays of derived types
   !==============================================================================
@@ -982,6 +991,11 @@ end subroutine get_species_refind
       allocate(mamoptdiag(m)%vext_mode(pcols, pver))
       allocate(mamoptdiag(m)%vssa_mode(pcols, pver))
       allocate(mamoptdiag(m)%vasm_mode(pcols, pver))
+
+      ! Per-mode SW optical properties (all bands)
+      allocate(mamoptdiag(m)%tauxar(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%ssa   (pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%g     (pcols, pver, nswbands))
       ! Initialize to zero
       mamoptdiag(m)%vext_sulfate(:,:) = 0._r8
       mamoptdiag(m)%vssa_sulfate(:,:) = 0._r8
@@ -1028,6 +1042,10 @@ end subroutine get_species_refind
       mamoptdiag(m)%vext_mode(:,:) = 0._r8
       mamoptdiag(m)%vssa_mode(:,:) = 0._r8
       mamoptdiag(m)%vasm_mode(:,:) = 0._r8
+
+      mamoptdiag(m)%tauxar(:,:,:) = 0._r8
+      mamoptdiag(m)%ssa(:,:,:)    = 0._r8
+      mamoptdiag(m)%g(:,:,:)      = 0._r8
       
     end do
     
@@ -1088,6 +1106,10 @@ end subroutine get_species_refind
       if (allocated(mamoptdiag(m)%vext_mode)) deallocate(mamoptdiag(m)%vext_mode)
       if (allocated(mamoptdiag(m)%vssa_mode)) deallocate(mamoptdiag(m)%vssa_mode)
       if (allocated(mamoptdiag(m)%vasm_mode)) deallocate(mamoptdiag(m)%vasm_mode)
+
+      if (allocated(mamoptdiag(m)%tauxar)) deallocate(mamoptdiag(m)%tauxar)
+      if (allocated(mamoptdiag(m)%ssa))    deallocate(mamoptdiag(m)%ssa)
+      if (allocated(mamoptdiag(m)%g))      deallocate(mamoptdiag(m)%g)
     end do
     
     deallocate(mamoptdiag)
@@ -1256,7 +1278,7 @@ do m = 1, nmodes
       ! ==================================================================
       ! Loop over vertical levels (BOTTOM-UP: k=1 surface, increasing upward)
       ! ==================================================================
-      do k = 1, top_lev
+      do k = top_lev, pver ! remember top_lev is set to 1 for mam in gc context( bootom up) .  
 
          ! Initialize bulk refractive index and volumes
          crefin(:ncol)   = (0._r8, 0._r8)
@@ -1671,13 +1693,12 @@ do m = 1, nmodes
          end if ! savaervis
 
          ! ===============================================================
-         ! Accumulate optical properties for radiation
+         ! Store per-mode optical properties (no accumulation here)
          ! ===============================================================
          do i = 1, ncol
-            tauxar(i,k,isw) = tauxar(i,k,isw) + dopaer(i)
-            wa(i,k,isw)     = wa(i,k,isw)     + dopaer(i)*palb(i)
-            ga(i,k,isw)     = ga(i,k,isw)     + dopaer(i)*palb(i)*pasm(i)
-            fa(i,k,isw)     = fa(i,k,isw)     + dopaer(i)*palb(i)*pasm(i)*pasm(i)
+            mamoptdiag(m)%tauxar(i,k,isw) = dopaer(i)
+            mamoptdiag(m)%ssa(i,k,isw)    = palb(i)
+            mamoptdiag(m)%g(i,k,isw)      = pasm(i)
          end do
 
       end do ! vertical level loop
@@ -1685,6 +1706,32 @@ do m = 1, nmodes
    end do ! shortwave band loop
 
 end do ! mode loop
+
+! ========================================================================
+! Sum per-mode contributions  ->  total column optical properties
+!   tauxar  = sum_m  tau_m
+!   wa      = sum_m  tau_m * ssa_m            (= sum_m  wa_m)
+!   ga      = sum_m  tau_m * ssa_m * g_m      (= sum_m  ga_m)
+!   fa      = sum_m  tau_m * ssa_m * g_m^2    (= sum_m  fa_m)
+! ========================================================================
+do isw = 1, nswbands
+   do k =  top_lev, pver
+      do i = 1, ncol
+         do m = 1, nmodes
+            tauxar(i,k,isw) = tauxar(i,k,isw) + mamoptdiag(m)%tauxar(i,k,isw)
+            wa(i,k,isw)     = wa(i,k,isw)     + mamoptdiag(m)%tauxar(i,k,isw) &
+                                               * mamoptdiag(m)%ssa(i,k,isw)
+            ga(i,k,isw)     = ga(i,k,isw)     + mamoptdiag(m)%tauxar(i,k,isw) &
+                                               * mamoptdiag(m)%ssa(i,k,isw) &
+                                               * mamoptdiag(m)%g(i,k,isw)
+            fa(i,k,isw)     = fa(i,k,isw)     + mamoptdiag(m)%tauxar(i,k,isw) &
+                                               * mamoptdiag(m)%ssa(i,k,isw) &
+                                               * mamoptdiag(m)%g(i,k,isw) &
+                                               * mamoptdiag(m)%g(i,k,isw)
+         end do
+      end do
+   end do
+end do
 
 ! Cleanup
 deallocate(specrefindex)
@@ -1695,7 +1742,7 @@ end subroutine mam_aero_sw
   !==========================================================================  
 subroutine modal_size_parameters(ncol, sigma_logr_aer, dgnumwet, radsurf, logradsurf, cheb)
 
-   use mam_utils, only : pver, top_lev => trop_cloud_top_lev
+   use mam_utils, only : pver, top_lev => trop_cloud_top_lev ! 1 in mam/gc context !
 
    integer,  intent(in)  :: ncol
    real(r8), intent(in)  :: sigma_logr_aer  ! geometric standard deviation of number distribution

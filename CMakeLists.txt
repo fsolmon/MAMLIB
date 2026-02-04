@@ -23,6 +23,7 @@ add_library(MAM STATIC EXCLUDE_FROM_ALL
     	module_mosaic_ext.F90
         module_mosaic_astem.F90
 	module_mosaic_init_aerpar.F90
+	mam_opt.F90 
 	radconstants.F90
         rad_constituents.F90 
 	physics_buffer.F90
