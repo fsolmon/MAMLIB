@@ -1363,7 +1363,8 @@ loop:    do i = icldphy+1, pcnst
 ! FAB This routine was added for facilitating use in Geos-chem and GCMAMBOX 
 SUBROUTINE MAM_init_basics(pbuf)
 ! equivqlent to the cambox_init_basics
-
+ use physconst, only: pi, epsilo, latvap, latice, &
+                           rh2o, cpair, tmelt, mwdry, r_universal
 use precision_mod, only :r8 => f8
 use constituents, only:   cnst_name, species_class , cnst_get_ind 
 use chem_mods, only: adv_mass, gas_pcnst, imozart
@@ -1376,13 +1377,14 @@ use modal_aero_data, only: nbc, npoa, nsoa, nsoag
 use modal_aero_amicphys, only: mosaic,gaexch_h2so4_uptake_optaa, newnuc_h2so4_conc_optaa
 use modal_aero_calcsize, only: modal_aero_calcsize_reg
 use modal_aero_wateruptake, only: modal_aero_wateruptake_reg, modal_aero_wateruptake_init
-
+use wv_saturation, only: gestbl
 implicit none
 
 type(physics_buffer_desc), pointer :: pbuf(:)
 type(physics_buffer_desc), pointer :: pbuf2d(:,:)
 
-
+logical :: ip
+real(r8) :: tmn, tmx, trice
 
 integer :: l, l2, n, s, idx,lchnk
 
@@ -1513,11 +1515,21 @@ end do
       call modal_aero_initialize(pbuf2d, imozart, species_class )
       call modal_aero_wateruptake_init( pbuf2d )
 
-              gaexch_h2so4_uptake_optaa =  2
-              newnuc_h2so4_conc_optaa   =  2
-              mosaic = .true.
-              lchnk = begchunk
-              pbuf => pbuf_get_chunk( pbuf2d, lchnk)
+! initialise parameters rrequired by the qsat function  
+      tmn   = 173.16_r8
+      tmx   = 375.16_r8
+      trice =  20.00_r8
+      ip    = .true.
+      call gestbl(tmn     ,tmx     ,trice   ,ip      ,epsilo  , &
+                  latvap  ,latice  ,rh2o    ,cpair   ,tmelt )
+
+!other important flags 
+      gaexch_h2so4_uptake_optaa =  2
+      newnuc_h2so4_conc_optaa   =  2
+      mosaic = .true.
+
+      lchnk = begchunk
+      pbuf => pbuf_get_chunk( pbuf2d, lchnk)
          
               ! initialize gas phase indices relative to state % q 
               call cnst_get_ind( 'SOAG',  l_soag,   .false. )
