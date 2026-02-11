@@ -43,7 +43,7 @@ public :: &
    modal_aero_wateruptake_init, &
    modal_aero_wateruptake_dr
 
-public :: modal_aero_wateruptake_reg
+public :: modal_aero_wateruptake_reg, load_pbuf, unload_pbuf
 
 real(r8), parameter :: third = 1._r8/3._r8
 real(r8), parameter :: pi43  = pi*4.0_r8/3.0_r8
@@ -1161,6 +1161,179 @@ end subroutine modal_aero_wateruptake_sub
       end subroutine makoh_quartic
 
 !----------------------------------------------------------------------
+! FAB / history 
+
+
+SUBROUTINE load_pbuf( pbuf, lchnk, ncol,  &
+         cld, qqcw, dgncur_a, dgncur_awet, qaerwat, wetdens,hygro)
+
+
+      USE mam_utils, only: pcols,pver
+      USE constituents, only : pcnst
+      USE chem_mods, only: adv_mass, gas_pcnst, imozart
+      USE physconst, only: mwdry
+
+      USE modal_aero_data, only:  &
+         lmassptrcw_amode, nspec_amode, numptrcw_amode, &
+         qqcw_get_field, ntot_amode
+
+      USE physics_buffer, only: physics_buffer_desc, &
+         pbuf_get_index, pbuf_get_field
+
+      TYPE(physics_buffer_desc), pointer :: pbuf(:)  ! physics buffer for a chunk
+
+      INTEGER,  intent(in   ) :: lchnk, ncol
+
+      REAL(r8), intent(in   ) :: cld(pcols,pver)    ! stratiform cloud fraction
+      REAL(r8), intent(in   ) :: qqcw(pcols,pver,pcnst)  ! Cloudborne aerosol MR array
+      REAL(r8), intent(in   ) :: dgncur_a(pcols,pver,ntot_amode)
+      REAL(r8), intent(in   ) :: dgncur_awet(pcols,pver,ntot_amode)
+      REAL(r8), intent(in   ) :: qaerwat(pcols,pver,ntot_amode)
+      REAL(r8), intent(in   ) :: wetdens(pcols,pver,ntot_amode)
+      REAL(r8), intent(in   ) :: hygro(pcols,pver,ntot_amode)
+      INTEGER :: idx, l, ll, n
+
+      REAL(r8), pointer :: fldcw(:,:)
+      REAL(r8), pointer :: ycld(:,:)
+      REAL(r8), pointer :: ydgnum(:,:,:)
+      REAL(r8), pointer :: ydgnumwet(:,:,:)
+      REAL(r8), pointer :: yqaerwat(:,:,:)
+      REAL(r8), pointer :: ywetdens(:,:,:)
+      REAL(r8), pointer :: yhygro(:,:,:)
+
+
+ ! FAB ncol = pcols , maybe getrif of it   
+      idx = pbuf_get_index( 'CLD' )
+      CALL pbuf_get_field( pbuf, idx, ycld )
+      ycld(:,:) = 0.0e+0_r8
+      ycld(1:ncol,:) = cld(1:ncol,:)
+
+      idx = pbuf_get_index( 'DGNUM' )
+      CALL pbuf_get_field( pbuf, idx, ydgnum )
+      ydgnum(:,:,:) = 0.0e+0_r8
+      ydgnum(1:ncol,:,:) = dgncur_a(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'DGNUMWET' )
+      CALL pbuf_get_field( pbuf, idx, ydgnumwet )
+      ydgnumwet(:,:,:) = 0.0e+0_r8
+      ydgnumwet(1:ncol,:,:) = dgncur_awet(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'QAERWAT' )
+      CALL pbuf_get_field( pbuf, idx, yqaerwat )
+      yqaerwat(:,:,:) = 0.0e+0_r8
+      yqaerwat(1:ncol,:,:) = qaerwat(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'WETDENS_AP' )
+      CALL pbuf_get_field( pbuf, idx, ywetdens )
+      ywetdens(:,:,:) = 0.0e+0_r8
+      ywetdens(1:ncol,:,:) = wetdens(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'HYGROM' )
+      CALL pbuf_get_field( pbuf, idx, yhygro )
+      yhygro(:,:,:) = 0.0e+0_r8
+      yhygro(1:ncol,:,:) = hygro(1:ncol,:,:)
+
+      DO n = 1, ntot_amode
+      DO ll = 0, nspec_amode(n)
+         l = numptrcw_amode(n)
+         IF (ll > 0) l = lmassptrcw_amode(ll,n)
+         fldcw => qqcw_get_field( pbuf, l, lchnk )
+         fldcw(:,:) = 0.0e+0_r8
+         fldcw(1:ncol,:) = qqcw(1:ncol,:,l)
+      END DO
+      END DO
+
+
+      RETURN
+      END SUBROUTINE load_pbuf
+
+!FAB
+!-----------------------------------------------------------------------------
+! ADDED utility routines to generate pbuf in the GC context
+!-------------------------------------------------------------------------------
+      SUBROUTINE unload_pbuf( pbuf, lchnk, ncol, &
+         cld, qqcw, dgncur_a, dgncur_awet, qaerwat, wetdens,hygro )
+
+      USE mam_utils, only: pcols,pver
+      USE constituents, only : pcnst
+      USE chem_mods, only: adv_mass, gas_pcnst, imozart
+      USE physconst, only: mwdry
+
+      USE modal_aero_data, only:  &
+         lmassptrcw_amode, nspec_amode, numptrcw_amode, &
+         qqcw_get_field, ntot_amode
+
+      USE physics_buffer, only: physics_buffer_desc, &
+         pbuf_get_index, pbuf_get_field
+
+      TYPE(physics_buffer_desc), pointer :: pbuf(:)  ! physics buffer for a chunk
+
+      INTEGER,  intent(in   ) :: lchnk, ncol
+
+      REAL(r8), intent(in   ) :: cld(pcols,pver)    ! stratiform cloud fraction
+
+      REAL(r8), intent(inout) :: qqcw(pcols,pver,pcnst)  ! Cloudborne aerosol MR array
+      REAL(r8), intent(inout) :: dgncur_a(pcols,pver,ntot_amode)
+      REAL(r8), intent(inout) :: dgncur_awet(pcols,pver,ntot_amode)
+      REAL(r8), intent(inout) :: qaerwat(pcols,pver,ntot_amode)
+      REAL(r8), intent(inout) :: wetdens(pcols,pver,ntot_amode)
+      REAL(r8), intent(inout) :: hygro(pcols,pver,ntot_amode)
+
+      INTEGER :: i, idx, k, l, ll, n
+      REAL(r8) :: tmpa
+
+      REAL(r8), pointer :: fldcw(:,:)
+      REAL(r8), pointer :: ycld(:,:)
+      REAL(r8), pointer :: ydgnum(:,:,:)
+      REAL(r8), pointer :: ydgnumwet(:,:,:)
+      REAL(r8), pointer :: yqaerwat(:,:,:)
+      REAL(r8), pointer :: ywetdens(:,:,:)
+      REAL(r8), pointer :: yhygro(:,:,:)
+
+
+      idx = pbuf_get_index( 'CLD' )
+      CALL pbuf_get_field( pbuf, idx, ycld )
+! cld should not have changed, so check for changes rather than unloading it
+!     cld(1:ncol,:) = ycld(1:ncol,:)
+      tmpa = maxval( abs( cld(1:ncol,:) - ycld(1:ncol,:) ) )
+      IF (tmpa /= 0.0e+0_r8) then
+         write(*,*) '*** unload_pbuf cld change error - ', tmpa
+         stop
+      END IF
+
+      idx = pbuf_get_index( 'DGNUM' )
+      CALL pbuf_get_field( pbuf, idx, ydgnum )
+      dgncur_a(1:ncol,:,:) = ydgnum(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'DGNUMWET' )
+      CALL pbuf_get_field( pbuf, idx, ydgnumwet )
+      dgncur_awet(1:ncol,:,:) = ydgnumwet(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'QAERWAT' )
+      CALL pbuf_get_field( pbuf, idx, yqaerwat )
+      qaerwat(1:ncol,:,:) = yqaerwat(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'WETDENS_AP' )
+      CALL pbuf_get_field( pbuf, idx, ywetdens )
+      wetdens(1:ncol,:,:) = ywetdens(1:ncol,:,:)
+
+      idx = pbuf_get_index( 'HYGROM' )
+      CALL pbuf_get_field( pbuf, idx, yhygro )
+      hygro(1:ncol,:,:) = yhygro(1:ncol,:,:)
+
+
+      DO n = 1, ntot_amode
+      DO ll = 0, nspec_amode(n)
+         l = numptrcw_amode(n)
+         IF (ll > 0) l = lmassptrcw_amode(ll,n)
+         fldcw => qqcw_get_field( pbuf, l, lchnk )
+         qqcw(1:ncol,:,l) = fldcw(1:ncol,:)
+      END DO
+      END DO
+
+
+      RETURN
+      END SUBROUTINE unload_pbuf
 
    end module modal_aero_wateruptake
 
