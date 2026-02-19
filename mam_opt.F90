@@ -116,55 +116,55 @@ module mam_opt
 
 type :: mam_optics_diagnostics
    
-   ! Extinction for each species at visible wavelength (m2/kg air)
-   real(r8), allocatable :: vext_sulfate(:,:)    ! (pcols, pver)
-   real(r8), allocatable :: vext_bc(:,:)
-   real(r8), allocatable :: vext_pom(:,:)
-   real(r8), allocatable :: vext_soa(:,:)
-   real(r8), allocatable :: vext_dust(:,:)
-   real(r8), allocatable :: vext_seasalt(:,:)
+   ! Extinction for each species across all SW bands (m2/kg air)
+   real(r8), allocatable :: vext_sulfate(:,:,:)    ! (pcols, pver, nswbands)
+   real(r8), allocatable :: vext_bc(:,:,:)
+   real(r8), allocatable :: vext_pom(:,:,:)
+   real(r8), allocatable :: vext_soa(:,:,:)
+   real(r8), allocatable :: vext_dust(:,:,:)
+   real(r8), allocatable :: vext_seasalt(:,:,:)
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
-   real(r8), allocatable :: vext_mom(:,:)
-   real(r8), allocatable :: vext_no3(:,:)
-   real(r8), allocatable :: vext_nh4(:,:)
+   real(r8), allocatable :: vext_mom(:,:,:)
+   real(r8), allocatable :: vext_no3(:,:,:)
+   real(r8), allocatable :: vext_nh4(:,:,:)
 #elif ( defined MODAL_AERO_4MODE_MOM )
-   real(r8), allocatable :: vext_mom(:,:)
+   real(r8), allocatable :: vext_mom(:,:,:)
 #endif
    
-   ! Single scattering albedo for each species at visible wavelength
-   real(r8), allocatable :: vssa_sulfate(:,:)
-   real(r8), allocatable :: vssa_bc(:,:)
-   real(r8), allocatable :: vssa_pom(:,:)
-   real(r8), allocatable :: vssa_soa(:,:)
-   real(r8), allocatable :: vssa_dust(:,:)
-   real(r8), allocatable :: vssa_seasalt(:,:)
+   ! Single scattering albedo for each species across all SW bands
+   real(r8), allocatable :: vssa_sulfate(:,:,:)
+   real(r8), allocatable :: vssa_bc(:,:,:)
+   real(r8), allocatable :: vssa_pom(:,:,:)
+   real(r8), allocatable :: vssa_soa(:,:,:)
+   real(r8), allocatable :: vssa_dust(:,:,:)
+   real(r8), allocatable :: vssa_seasalt(:,:,:)
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
-   real(r8), allocatable :: vssa_mom(:,:)
-   real(r8), allocatable :: vssa_no3(:,:)
-   real(r8), allocatable :: vssa_nh4(:,:)
+   real(r8), allocatable :: vssa_mom(:,:,:)
+   real(r8), allocatable :: vssa_no3(:,:,:)
+   real(r8), allocatable :: vssa_nh4(:,:,:)
 #elif ( defined MODAL_AERO_4MODE_MOM )
-   real(r8), allocatable :: vssa_mom(:,:)
+   real(r8), allocatable :: vssa_mom(:,:,:)
 #endif
    
-   ! Asymmetry parameter for each species at visible wavelength
-   real(r8), allocatable :: vasm_sulfate(:,:)
-   real(r8), allocatable :: vasm_bc(:,:)
-   real(r8), allocatable :: vasm_pom(:,:)
-   real(r8), allocatable :: vasm_soa(:,:)
-   real(r8), allocatable :: vasm_dust(:,:)
-   real(r8), allocatable :: vasm_seasalt(:,:)
+   ! Asymmetry parameter for each species across all SW bands
+   real(r8), allocatable :: vasm_sulfate(:,:,:)
+   real(r8), allocatable :: vasm_bc(:,:,:)
+   real(r8), allocatable :: vasm_pom(:,:,:)
+   real(r8), allocatable :: vasm_soa(:,:,:)
+   real(r8), allocatable :: vasm_dust(:,:,:)
+   real(r8), allocatable :: vasm_seasalt(:,:,:)
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
-   real(r8), allocatable :: vasm_mom(:,:)
-   real(r8), allocatable :: vasm_no3(:,:)
-   real(r8), allocatable :: vasm_nh4(:,:)
+   real(r8), allocatable :: vasm_mom(:,:,:)
+   real(r8), allocatable :: vasm_no3(:,:,:)
+   real(r8), allocatable :: vasm_nh4(:,:,:)
 #elif ( defined MODAL_AERO_4MODE_MOM )
-   real(r8), allocatable :: vasm_mom(:,:)
+   real(r8), allocatable :: vasm_mom(:,:,:)
 #endif
    
-   ! Total mode optical properties at visible wavelength
-   real(r8), allocatable :: vext_mode(:,:)       ! Total extinction for this mode
-   real(r8), allocatable :: vssa_mode(:,:)       ! Bulk SSA for this mode
-   real(r8), allocatable :: vasm_mode(:,:)       ! Bulk asymmetry for this mode
+   ! Total mode optical properties across all SW bands
+   real(r8), allocatable :: vext_mode(:,:,:)       ! (pcols, pver, nswbands) Total extinction
+   real(r8), allocatable :: vssa_mode(:,:,:)        ! Bulk SSA for this mode
+   real(r8), allocatable :: vasm_mode(:,:,:)        ! Bulk asymmetry for this mode
 
    ! Per-mode optical properties across all SW bands
    ! Stored in mamoptdiag(m) : the mode index is implicit in the array subscript.
@@ -936,112 +936,112 @@ end subroutine get_species_refind
     do m = 1, nmode
       
       ! Sulfate
-      allocate(mamoptdiag(m)%vext_sulfate(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_sulfate(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_sulfate(pcols, pver))
+      allocate(mamoptdiag(m)%vext_sulfate(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_sulfate(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_sulfate(pcols, pver, nswbands))
       
       ! BC
-      allocate(mamoptdiag(m)%vext_bc(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_bc(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_bc(pcols, pver))
+      allocate(mamoptdiag(m)%vext_bc(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_bc(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_bc(pcols, pver, nswbands))
       
       ! POM
-      allocate(mamoptdiag(m)%vext_pom(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_pom(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_pom(pcols, pver))
+      allocate(mamoptdiag(m)%vext_pom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_pom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_pom(pcols, pver, nswbands))
       
       ! SOA
-      allocate(mamoptdiag(m)%vext_soa(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_soa(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_soa(pcols, pver))
+      allocate(mamoptdiag(m)%vext_soa(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_soa(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_soa(pcols, pver, nswbands))
       
       ! Dust
-      allocate(mamoptdiag(m)%vext_dust(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_dust(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_dust(pcols, pver))
+      allocate(mamoptdiag(m)%vext_dust(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_dust(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_dust(pcols, pver, nswbands))
       
       ! Sea salt
-      allocate(mamoptdiag(m)%vext_seasalt(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_seasalt(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_seasalt(pcols, pver))
+      allocate(mamoptdiag(m)%vext_seasalt(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_seasalt(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_seasalt(pcols, pver, nswbands))
       
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
       ! MOM
-      allocate(mamoptdiag(m)%vext_mom(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_mom(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_mom(pcols, pver))
+      allocate(mamoptdiag(m)%vext_mom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_mom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_mom(pcols, pver, nswbands))
       
       ! NO3
-      allocate(mamoptdiag(m)%vext_no3(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_no3(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_no3(pcols, pver))
+      allocate(mamoptdiag(m)%vext_no3(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_no3(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_no3(pcols, pver, nswbands))
       
       ! NH4
-      allocate(mamoptdiag(m)%vext_nh4(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_nh4(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_nh4(pcols, pver))
+      allocate(mamoptdiag(m)%vext_nh4(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_nh4(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_nh4(pcols, pver, nswbands))
 #elif ( defined MODAL_AERO_4MODE_MOM )
       ! MOM only
-      allocate(mamoptdiag(m)%vext_mom(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_mom(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_mom(pcols, pver))
+      allocate(mamoptdiag(m)%vext_mom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_mom(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_mom(pcols, pver, nswbands))
 #endif
       
-      ! Mode totals
-      allocate(mamoptdiag(m)%vext_mode(pcols, pver))
-      allocate(mamoptdiag(m)%vssa_mode(pcols, pver))
-      allocate(mamoptdiag(m)%vasm_mode(pcols, pver))
+      ! Mode totals (all SW bands)
+      allocate(mamoptdiag(m)%vext_mode(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vssa_mode(pcols, pver, nswbands))
+      allocate(mamoptdiag(m)%vasm_mode(pcols, pver, nswbands))
 
       ! Per-mode SW optical properties (all bands)
       allocate(mamoptdiag(m)%tauxar(pcols, pver, nswbands))
       allocate(mamoptdiag(m)%ssa   (pcols, pver, nswbands))
       allocate(mamoptdiag(m)%g     (pcols, pver, nswbands))
       ! Initialize to zero
-      mamoptdiag(m)%vext_sulfate(:,:) = 0._r8
-      mamoptdiag(m)%vssa_sulfate(:,:) = 0._r8
-      mamoptdiag(m)%vasm_sulfate(:,:) = 0._r8
+      mamoptdiag(m)%vext_sulfate(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_sulfate(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_sulfate(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_bc(:,:) = 0._r8
-      mamoptdiag(m)%vssa_bc(:,:) = 0._r8
-      mamoptdiag(m)%vasm_bc(:,:) = 0._r8
+      mamoptdiag(m)%vext_bc(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_bc(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_bc(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_pom(:,:) = 0._r8
-      mamoptdiag(m)%vssa_pom(:,:) = 0._r8
-      mamoptdiag(m)%vasm_pom(:,:) = 0._r8
+      mamoptdiag(m)%vext_pom(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_pom(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_pom(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_soa(:,:) = 0._r8
-      mamoptdiag(m)%vssa_soa(:,:) = 0._r8
-      mamoptdiag(m)%vasm_soa(:,:) = 0._r8
+      mamoptdiag(m)%vext_soa(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_soa(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_soa(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_dust(:,:) = 0._r8
-      mamoptdiag(m)%vssa_dust(:,:) = 0._r8
-      mamoptdiag(m)%vasm_dust(:,:) = 0._r8
+      mamoptdiag(m)%vext_dust(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_dust(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_dust(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_seasalt(:,:) = 0._r8
-      mamoptdiag(m)%vssa_seasalt(:,:) = 0._r8
-      mamoptdiag(m)%vasm_seasalt(:,:) = 0._r8
+      mamoptdiag(m)%vext_seasalt(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_seasalt(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_seasalt(:,:,:) = 0._r8
       
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
-      mamoptdiag(m)%vext_mom(:,:) = 0._r8
-      mamoptdiag(m)%vssa_mom(:,:) = 0._r8
-      mamoptdiag(m)%vasm_mom(:,:) = 0._r8
+      mamoptdiag(m)%vext_mom(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_mom(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_mom(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_no3(:,:) = 0._r8
-      mamoptdiag(m)%vssa_no3(:,:) = 0._r8
-      mamoptdiag(m)%vasm_no3(:,:) = 0._r8
+      mamoptdiag(m)%vext_no3(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_no3(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_no3(:,:,:) = 0._r8
       
-      mamoptdiag(m)%vext_nh4(:,:) = 0._r8
-      mamoptdiag(m)%vssa_nh4(:,:) = 0._r8
-      mamoptdiag(m)%vasm_nh4(:,:) = 0._r8
+      mamoptdiag(m)%vext_nh4(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_nh4(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_nh4(:,:,:) = 0._r8
 #elif ( defined MODAL_AERO_4MODE_MOM )
-      mamoptdiag(m)%vext_mom(:,:) = 0._r8
-      mamoptdiag(m)%vssa_mom(:,:) = 0._r8
-      mamoptdiag(m)%vasm_mom(:,:) = 0._r8
+      mamoptdiag(m)%vext_mom(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_mom(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_mom(:,:,:) = 0._r8
 #endif
       
-      mamoptdiag(m)%vext_mode(:,:) = 0._r8
-      mamoptdiag(m)%vssa_mode(:,:) = 0._r8
-      mamoptdiag(m)%vasm_mode(:,:) = 0._r8
+      mamoptdiag(m)%vext_mode(:,:,:) = 0._r8
+      mamoptdiag(m)%vssa_mode(:,:,:) = 0._r8
+      mamoptdiag(m)%vasm_mode(:,:,:) = 0._r8
 
       mamoptdiag(m)%tauxar(:,:,:) = 0._r8
       mamoptdiag(m)%ssa(:,:,:)    = 0._r8
@@ -1131,7 +1131,7 @@ use physics_buffer, only: physics_buffer_desc
 use rad_constituents,  only: rad_cnst_get_info, rad_cnst_get_aer_mmr, &
                              rad_cnst_get_aer_props
 use physconst,         only: rhoh2o, rga, rair
-use radconstants,      only: idx_sw_diag  ! Index for visible band diagnostics
+use radconstants,      only: idx_sw_diag  ! Index for visible band (kept for reference)
 
 ! Arguments
 type(physics_state), intent(in)  :: state
@@ -1188,9 +1188,6 @@ real(r8) :: pabs(pcols)
 real(r8) :: pasm(pcols)                
 real(r8) :: palb(pcols)                
 real(r8) :: dopaer(pcols)              
-
-! Diagnostics for visible band
-logical :: savaervis
 
 ! Species-specific scattering and absorption for partitioning
 real(r8) :: scatso4(pcols), absso4(pcols), hygroso4(pcols)
@@ -1262,18 +1259,15 @@ do m = 1, nmodes
    ! Calculate size parameters
    call modal_size_parameters(ncol, sigma_logr_aer, dgnumwet, radsurf, logradsurf, cheb)
 
-   ! Initialize diagnostics for this mode if requested
-      mamoptdiag(m)%vext_mode(:ncol,:) = 0._r8
-      mamoptdiag(m)%vssa_mode(:ncol,:) = 0._r8
-      mamoptdiag(m)%vasm_mode(:ncol,:) = 0._r8
-
    ! =====================================================================
    ! Loop over shortwave bands
    ! =====================================================================
    do isw = 1, nswbands
 
-      ! Check if this is the visible band for diagnostics
-      savaervis = (isw == idx_sw_diag)
+      ! Initialize mode-total diagnostics for this band
+      mamoptdiag(m)%vext_mode(:ncol,:,isw) = 0._r8
+      mamoptdiag(m)%vssa_mode(:ncol,:,isw) = 0._r8
+      mamoptdiag(m)%vasm_mode(:ncol,:,isw) = 0._r8
 
       ! ==================================================================
       ! Loop over vertical levels (BOTTOM-UP: k=1 surface, increasing upward)
@@ -1284,42 +1278,40 @@ do m = 1, nmodes
          crefin(:ncol)   = (0._r8, 0._r8)
          dryvol(:ncol)   = 0._r8
 
-         ! Initialize species diagnostics for visible band
-         if (savaervis) then
-            scatso4(:ncol)     = 0._r8
-            absso4(:ncol)      = 0._r8
-            hygroso4(:ncol)    = 0._r8
-            scatbc(:ncol)      = 0._r8
-            absbc(:ncol)       = 0._r8
-            hygrobc(:ncol)     = 0._r8
-            scatpom(:ncol)     = 0._r8
+         ! Initialize species scattering/absorption buffers (all bands)
+         scatso4(:ncol)     = 0._r8
+         absso4(:ncol)      = 0._r8
+         hygroso4(:ncol)    = 0._r8
+         scatbc(:ncol)      = 0._r8
+         absbc(:ncol)       = 0._r8
+         hygrobc(:ncol)     = 0._r8
+         scatpom(:ncol)     = 0._r8
             abspom(:ncol)      = 0._r8
             hygropom(:ncol)    = 0._r8
             scatsoa(:ncol)     = 0._r8
-            abssoa(:ncol)      = 0._r8
-            hygrosoa(:ncol)    = 0._r8
-            scatdust(:ncol)    = 0._r8
-            absdust(:ncol)     = 0._r8
-            hygrodust(:ncol)   = 0._r8
-            scatseasalt(:ncol) = 0._r8
-            absseasalt(:ncol)  = 0._r8
-            hygroseasalt(:ncol)= 0._r8
+         abssoa(:ncol)      = 0._r8
+         hygrosoa(:ncol)    = 0._r8
+         scatdust(:ncol)    = 0._r8
+         absdust(:ncol)     = 0._r8
+         hygrodust(:ncol)   = 0._r8
+         scatseasalt(:ncol) = 0._r8
+         absseasalt(:ncol)  = 0._r8
+         hygroseasalt(:ncol)= 0._r8
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
-            scatmom(:ncol)     = 0._r8
-            absmom(:ncol)      = 0._r8
-            hygromom(:ncol)    = 0._r8
-            scatno3(:ncol)     = 0._r8
-            absno3(:ncol)      = 0._r8
-            hygrono3(:ncol)    = 0._r8
-            scatnh4(:ncol)     = 0._r8
-            absnh4(:ncol)      = 0._r8
-            hygronh4(:ncol)    = 0._r8
+         scatmom(:ncol)     = 0._r8
+         absmom(:ncol)      = 0._r8
+         hygromom(:ncol)    = 0._r8
+         scatno3(:ncol)     = 0._r8
+         absno3(:ncol)      = 0._r8
+         hygrono3(:ncol)    = 0._r8
+         scatnh4(:ncol)     = 0._r8
+         absnh4(:ncol)      = 0._r8
+         hygronh4(:ncol)    = 0._r8
 #elif ( defined MODAL_AERO_4MODE_MOM )
-            scatmom(:ncol)     = 0._r8
-            absmom(:ncol)      = 0._r8
-            hygromom(:ncol)    = 0._r8
+         scatmom(:ncol)     = 0._r8
+         absmom(:ncol)      = 0._r8
+         hygromom(:ncol)    = 0._r8
 #endif
-         end if
 
          ! ===============================================================
          ! Loop over species - accumulate volume-weighted refractive index
@@ -1345,42 +1337,40 @@ do m = 1, nmodes
             end do
 
             ! ============================================================
-            ! Diagnostics for visible band only
+            ! Accumulate species-specific scattering/absorption (all bands)
             ! ============================================================
-            if (savaervis) then
-               
-               specrefr = real(specrefindex(isw))
-               specrefi = aimag(specrefindex(isw))
+            specrefr = real(specrefindex(isw))
+            specrefi = aimag(specrefindex(isw))
 
-               ! Accumulate species-specific scattering and absorption
-               ! These will be used to partition the total optical properties
-               
+            ! Accumulate species-specific scattering and absorption
+            ! These will be used to partition the total optical properties
+            
 #if ( defined MOSAIC_SPECIES )
-               if ((trim(spectype) == 'dust') .or. (trim(spectype) == 'carbonate') .or. &
-                   (trim(spectype) == 'calcium')) then
-                  do i = 1, ncol
-                     scatdust(i)  = scatdust(i) + vol(i)*specrefr
-                     absdust(i)   = absdust(i) - vol(i)*specrefi
-                     hygrodust(i) = hygrodust(i) + vol(i)*hygro_aer
-                  end do
-               end if
+            if ((trim(spectype) == 'dust') .or. (trim(spectype) == 'carbonate') .or. &
+                (trim(spectype) == 'calcium')) then
+               do i = 1, ncol
+                  scatdust(i)  = scatdust(i) + vol(i)*specrefr
+                  absdust(i)   = absdust(i) - vol(i)*specrefi
+                  hygrodust(i) = hygrodust(i) + vol(i)*hygro_aer
+               end do
+            end if
 #else
-               if (trim(spectype) == 'dust') then
-                  do i = 1, ncol
-                     scatdust(i)  = vol(i)*specrefr
-                     absdust(i)   = -vol(i)*specrefi
-                     hygrodust(i) = vol(i)*hygro_aer
-                  end do
-               end if
+            if (trim(spectype) == 'dust') then
+               do i = 1, ncol
+                  scatdust(i)  = vol(i)*specrefr
+                  absdust(i)   = -vol(i)*specrefi
+                  hygrodust(i) = vol(i)*hygro_aer
+               end do
+            end if
 #endif
-               
-               if (trim(spectype) == 'sulfate') then
-                  do i = 1, ncol
-                     scatso4(i)  = vol(i)*specrefr
-                     absso4(i)   = -vol(i)*specrefi
-                     hygroso4(i) = vol(i)*hygro_aer
-                  end do
-               end if
+            
+            if (trim(spectype) == 'sulfate') then
+               do i = 1, ncol
+                  scatso4(i)  = vol(i)*specrefr
+                  absso4(i)   = -vol(i)*specrefi
+                  hygroso4(i) = vol(i)*hygro_aer
+               end do
+            end if
 
 #if ( defined MOSAIC_SPECIES )
                if (trim(spectype) == 'nitrate') then
@@ -1399,60 +1389,58 @@ do m = 1, nmodes
                   end do
                end if
 #endif
-               
-               if (trim(spectype) == 'black-c') then
-                  do i = 1, ncol
-                     scatbc(i)  = vol(i)*specrefr
-                     absbc(i)   = -vol(i)*specrefi
-                     hygrobc(i) = vol(i)*hygro_aer
-                  end do
-               end if
-               
-               if (trim(spectype) == 'p-organic') then
-                  do i = 1, ncol
-                     scatpom(i)  = vol(i)*specrefr
-                     abspom(i)   = -vol(i)*specrefi
-                     hygropom(i) = vol(i)*hygro_aer
-                  end do
-               end if
-               
-               if (trim(spectype) == 's-organic') then
-                  do i = 1, ncol
-                     scatsoa(i)  = vol(i)*specrefr
-                     abssoa(i)   = -vol(i)*specrefi
-                     hygrosoa(i) = vol(i)*hygro_aer
-                  end do
-               end if
+            
+            if (trim(spectype) == 'black-c') then
+               do i = 1, ncol
+                  scatbc(i)  = vol(i)*specrefr
+                  absbc(i)   = -vol(i)*specrefi
+                  hygrobc(i) = vol(i)*hygro_aer
+               end do
+            end if
+            
+            if (trim(spectype) == 'p-organic') then
+               do i = 1, ncol
+                  scatpom(i)  = vol(i)*specrefr
+                  abspom(i)   = -vol(i)*specrefi
+                  hygropom(i) = vol(i)*hygro_aer
+               end do
+            end if
+            
+            if (trim(spectype) == 's-organic') then
+               do i = 1, ncol
+                  scatsoa(i)  = vol(i)*specrefr
+                  abssoa(i)   = -vol(i)*specrefi
+                  hygrosoa(i) = vol(i)*hygro_aer
+               end do
+            end if
 
 #if ( defined MOSAIC_SPECIES )
-               if ((trim(spectype) == 'seasalt') .or. (trim(spectype) == 'chloride')) then
-                  do i = 1, ncol
-                     scatseasalt(i)  = scatseasalt(i) + vol(i)*specrefr
-                     absseasalt(i)   = absseasalt(i) - vol(i)*specrefi
-                     hygroseasalt(i) = hygroseasalt(i) + vol(i)*hygro_aer
-                  end do
-               end if
+            if ((trim(spectype) == 'seasalt') .or. (trim(spectype) == 'chloride')) then
+               do i = 1, ncol
+                  scatseasalt(i)  = scatseasalt(i) + vol(i)*specrefr
+                  absseasalt(i)   = absseasalt(i) - vol(i)*specrefi
+                  hygroseasalt(i) = hygroseasalt(i) + vol(i)*hygro_aer
+               end do
+            end if
 #else
-               if (trim(spectype) == 'seasalt') then
-                  do i = 1, ncol
-                     scatseasalt(i)  = vol(i)*specrefr
-                     absseasalt(i)   = -vol(i)*specrefi
-                     hygroseasalt(i) = vol(i)*hygro_aer
-                  end do
-               end if
+            if (trim(spectype) == 'seasalt') then
+               do i = 1, ncol
+                  scatseasalt(i)  = vol(i)*specrefr
+                  absseasalt(i)   = -vol(i)*specrefi
+                  hygroseasalt(i) = vol(i)*hygro_aer
+               end do
+            end if
 #endif
 
 #if ( defined MODAL_AERO_4MODE_MOM )
-               if (trim(spectype) == 'm-organic') then
-                  do i = 1, ncol
-                     scatmom(i)  = vol(i)*specrefr
-                     absmom(i)   = -vol(i)*specrefi
-                     hygromom(i) = vol(i)*hygro_aer
-                  end do
-               end if
+            if (trim(spectype) == 'm-organic') then
+               do i = 1, ncol
+                  scatmom(i)  = vol(i)*specrefr
+                  absmom(i)   = -vol(i)*specrefi
+                  hygromom(i) = vol(i)*hygro_aer
+               end do
+            end if
 #endif
-               
-            end if ! savaervis
 
          end do ! species loop
 
@@ -1535,9 +1523,8 @@ do m = 1, nmodes
          end do
 
          ! ===============================================================
-         ! Partition optical properties by species for visible band diagnostics
+         ! Partition optical properties by species across all SW bands
          ! ===============================================================
-         if (savaervis ) then
             
             do i = 1, ncol
                
@@ -1585,9 +1572,9 @@ do m = 1, nmodes
                   spec_ssa(i) = ((scatso4(i) + scath2o*hygroso4(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
                   spec_asm(i) = pasm(i)  ! Assume same asymmetry for all species
-                  mamoptdiag(m)%vext_sulfate(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_sulfate(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_sulfate(i,k) = spec_asm(i)
+                  mamoptdiag(m)%vext_sulfate(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_sulfate(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_sulfate(i,k,isw) = spec_asm(i)
                   
                   ! BC
                   spec_ext(i) = ((scatbc(i) + scath2o*hygrobc(i)/sumhygro)/sumscat*palb(i) + &
@@ -1595,9 +1582,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatbc(i) + scath2o*hygrobc(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_bc(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_bc(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_bc(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_bc(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_bc(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_bc(i,k,isw) = pasm(i)
                   
                   ! POM
                   spec_ext(i) = ((scatpom(i) + scath2o*hygropom(i)/sumhygro)/sumscat*palb(i) + &
@@ -1605,9 +1592,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatpom(i) + scath2o*hygropom(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_pom(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_pom(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_pom(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_pom(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_pom(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_pom(i,k,isw) = pasm(i)
                   
                   ! SOA
                   spec_ext(i) = ((scatsoa(i) + scath2o*hygrosoa(i)/sumhygro)/sumscat*palb(i) + &
@@ -1615,9 +1602,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatsoa(i) + scath2o*hygrosoa(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_soa(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_soa(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_soa(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_soa(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_soa(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_soa(i,k,isw) = pasm(i)
                   
                   ! Dust
                   spec_ext(i) = ((scatdust(i) + scath2o*hygrodust(i)/sumhygro)/sumscat*palb(i) + &
@@ -1625,9 +1612,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatdust(i) + scath2o*hygrodust(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_dust(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_dust(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_dust(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_dust(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_dust(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_dust(i,k,isw) = pasm(i)
                   
                   ! Sea salt
                   spec_ext(i) = ((scatseasalt(i) + scath2o*hygroseasalt(i)/sumhygro)/sumscat*palb(i) + &
@@ -1635,9 +1622,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatseasalt(i) + scath2o*hygroseasalt(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_seasalt(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_seasalt(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_seasalt(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_seasalt(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_seasalt(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_seasalt(i,k,isw) = pasm(i)
 
 #if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
                   ! MOM
@@ -1646,9 +1633,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatmom(i) + scath2o*hygromom(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_mom(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_mom(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_mom(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_mom(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_mom(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_mom(i,k,isw) = pasm(i)
                   
                   ! NO3
                   spec_ext(i) = ((scatno3(i) + scath2o*hygrono3(i)/sumhygro)/sumscat*palb(i) + &
@@ -1656,9 +1643,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatno3(i) + scath2o*hygrono3(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_no3(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_no3(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_no3(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_no3(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_no3(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_no3(i,k,isw) = pasm(i)
                   
                   ! NH4
                   spec_ext(i) = ((scatnh4(i) + scath2o*hygronh4(i)/sumhygro)/sumscat*palb(i) + &
@@ -1666,9 +1653,9 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatnh4(i) + scath2o*hygronh4(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_nh4(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_nh4(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_nh4(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_nh4(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_nh4(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_nh4(i,k,isw) = pasm(i)
 #elif ( defined MODAL_AERO_4MODE_MOM )
                   ! MOM
                   spec_ext(i) = ((scatmom(i) + scath2o*hygromom(i)/sumhygro)/sumscat*palb(i) + &
@@ -1676,21 +1663,19 @@ do m = 1, nmodes
                                 dopaer(i)
                   spec_ssa(i) = ((scatmom(i) + scath2o*hygromom(i)/sumhygro)/sumscat) * palb(i) / &
                                 max(spec_ext(i)/dopaer(i), 1.e-40_r8)
-                  mamoptdiag(m)%vext_mom(i,k) = spec_ext(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_mom(i,k) = spec_ssa(i)
-                  mamoptdiag(m)%vasm_mom(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_mom(i,k,isw) = spec_ext(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_mom(i,k,isw) = spec_ssa(i)
+                  mamoptdiag(m)%vasm_mom(i,k,isw) = pasm(i)
 #endif
                   
                   ! Mode totals
-                  mamoptdiag(m)%vext_mode(i,k) = dopaer(i) / mass(i,k)
-                  mamoptdiag(m)%vssa_mode(i,k) = palb(i)
-                  mamoptdiag(m)%vasm_mode(i,k) = pasm(i)
+                  mamoptdiag(m)%vext_mode(i,k,isw) = dopaer(i) / mass(i,k)
+                  mamoptdiag(m)%vssa_mode(i,k,isw) = palb(i)
+                  mamoptdiag(m)%vasm_mode(i,k,isw) = pasm(i)
                   
                end if ! wetvol > 0
                
             end do ! ncol
-            
-         end if ! savaervis
 
          ! ===============================================================
          ! Store per-mode optical properties (no accumulation here)

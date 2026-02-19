@@ -552,7 +552,6 @@ implicit none
 ! get saturation mixing ratio
       call qsat( t(1:ncol,1:pver), pmid(1:ncol,1:pver), &
                  ev_sat(1:ncol,1:pver), qv_sat(1:ncol,1:pver) )
-      print*, 'FAB qsat amicphys', qv_sat
 main_k_loop: &
       do k = top_lev, pver
 main_i_loop: &
@@ -594,7 +593,6 @@ main_i_loop: &
       if (jcldy > 0) afracsub(jcldy) = fcldy
 
       relhumgcm = max( 0.0_r8, min( 1.0_r8, qv(i,k)/qv_sat(i,k) ) )
-      print*, 'relhumgcm amicphys', relhumgcm
       if (ncldy_subarea <= 0) then
          relhumsub(:) = relhumgcm
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
@@ -608,7 +606,6 @@ main_i_loop: &
             relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
          end if
       end if
-print*,  'relhumsub', relhumsub(jclea) 
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
       if ( ldiag13n ) then
       write(lun13n,'(/a,3i5)') 'modal_aero_amicphys_intr mapping at nstep, i, k', nstep, i, k
