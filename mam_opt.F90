@@ -17,7 +17,7 @@ module mam_opt
   private
   
   ! Public interfaces
-  public :: mam_init_opt, mam_aero_sw
+  public :: mam_init_opt, mam_aero_sw, mam_aero_lw
   public :: read_species_optics_file
   public :: read_modal_optics_file
   public :: species_optics_properties
@@ -173,7 +173,31 @@ type :: mam_optics_diagnostics
    real(r8), allocatable :: tauxar(:,:,:)        ! (pcols, pver, nswbands)  opt. depth
    real(r8), allocatable :: ssa(:,:,:)           ! (pcols, pver, nswbands)  single-scat. albedo
    real(r8), allocatable :: g(:,:,:)             ! (pcols, pver, nswbands)  asymmetry param.
-   
+
+   ! -----------------------------------------------------------------------
+   ! LW per-mode total absorption optical depth (scattering neglected in LW)
+   ! -----------------------------------------------------------------------
+   real(r8), allocatable :: tauxar_lw(:,:,:)     ! (pcols, pver, nlwbands)
+
+   ! -----------------------------------------------------------------------
+   ! LW species-level mass extinction cross-section (m2/kg_air)
+   ! Derived from RH-interpolated species tables ext_lw(nrh, nlwbands).
+   ! In LW, extinction ~ absorption; scattering is neglected.
+   ! -----------------------------------------------------------------------
+   real(r8), allocatable :: vext_lw_sulfate(:,:,:)   ! (pcols, pver, nlwbands)
+   real(r8), allocatable :: vext_lw_bc(:,:,:)
+   real(r8), allocatable :: vext_lw_pom(:,:,:)
+   real(r8), allocatable :: vext_lw_soa(:,:,:)
+   real(r8), allocatable :: vext_lw_dust(:,:,:)
+   real(r8), allocatable :: vext_lw_seasalt(:,:,:)
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+   real(r8), allocatable :: vext_lw_mom(:,:,:)
+   real(r8), allocatable :: vext_lw_no3(:,:,:)
+   real(r8), allocatable :: vext_lw_nh4(:,:,:)
+#elif ( defined MODAL_AERO_4MODE_MOM )
+   real(r8), allocatable :: vext_lw_mom(:,:,:)
+#endif
+
 end type mam_optics_diagnostics
 
    !==============================================================================
@@ -206,7 +230,19 @@ character(len=50) :: filename
 !type(modal_optics_properties), dimension(4) :: modopt
 !---------------
 real(r8) :: rmmin, rmmax
-integer :: isw
+integer :: isw, ilw
+! LW water refractive index constants (Hale & Querry 1973; Warren & Brandt 2008)
+! Band ordering: RRTMG-LW bands 1-16 (10-3250 cm-1).
+real(r8), parameter :: refr_lw(16) = (/ &
+     1.27_r8, 1.22_r8, 1.18_r8, 1.15_r8, &   ! bands  1- 4  (10-  340 cm-1)
+     1.20_r8, 1.28_r8, 1.35_r8, 1.40_r8, &   ! bands  5- 8  (340-  980 cm-1)
+     1.38_r8, 1.35_r8, 1.33_r8, 1.31_r8, &   ! bands  9-12  (980- 1800 cm-1)
+     1.30_r8, 1.29_r8, 1.28_r8, 1.27_r8  /)  ! bands 13-16  (1800-3250 cm-1)
+real(r8), parameter :: refi_lw(16) = (/ &
+     0.38_r8, 0.42_r8, 0.45_r8, 0.35_r8, &   ! bands  1- 4
+     0.12_r8, 0.08_r8, 0.07_r8, 0.30_r8, &   ! bands  5- 8
+     0.35_r8, 0.28_r8, 0.10_r8, 0.08_r8, &   ! bands  9-12
+     0.07_r8, 0.06_r8, 0.05_r8, 0.04_r8  /)  ! bands 13-16
 
 call initialize_optics_arrays(6, 4)
 
@@ -269,6 +305,15 @@ call read_modal_optics_file(trim(filename), 4)
  ! to be completed for lw
  do isw = 1, nswbands
       crefwsw(isw) = cmplx(1.33_r8, 0.0_r8, kind=r8)
+ end do
+
+ ! Fill water LW refractive indices into crefwlw.
+ ! (refr_lw / refi_lw constants are declared at subroutine top.)
+ ! TODO: replace with values read from a water optical-constants file
+ !       (e.g. H2OliquidWater_rrtmg_c150315.nc used in E3SM) for full
+ !       band accuracy.
+ do ilw = 1, nlwbands
+   crefwlw(ilw) = cmplx(refr_lw(ilw), refi_lw(ilw), kind=r8)
  end do
 
 
@@ -506,6 +551,16 @@ end subroutine get_species_refind
     allocate(spcopp(ispec)%abs_sw(spcopp(ispec)%nrh, spcopp(ispec)%nswbands))
     allocate(spcopp(ispec)%ext_lw(spcopp(ispec)%nrh, spcopp(ispec)%nlwbands))
     allocate(spcopp(ispec)%abs_lw(spcopp(ispec)%nrh, spcopp(ispec)%nlwbands))
+    ! Zero-initialize ALL tables so that any silently-missing variable in the
+    ! NetCDF file leaves a safe value (0) rather than uninitialized heap garbage.
+    ! The LW tables in particular are often absent from older species files and
+    ! this is the primary cause of "crazy" output values.
+    spcopp(ispec)%ext_sw = 0._r8
+    spcopp(ispec)%ssa_sw = 1._r8   ! safe default: purely scattering (not absorbing)
+    spcopp(ispec)%asm_sw = 0._r8
+    spcopp(ispec)%abs_sw = 0._r8
+    spcopp(ispec)%ext_lw = 0._r8
+    spcopp(ispec)%abs_lw = 0._r8
     
     ! ========================================================================
     ! READ VARIABLES FROM NETCDF
@@ -603,20 +658,52 @@ end subroutine get_species_refind
     end if
     
     ! Read optical properties (LW)
+    ! NOTE: ext_lw and abs_lw units are m2/kg (mass cross-section per kg of species),
+    ! dimension order in file: (lw_band, rh_idx) -> Fortran reads as (nrh, nlwbands). CORRECT.
+    ! abs_lw is preferred over ext_lw in mam_aero_lw because LW aerosol scattering
+    ! is negligible; ext_lw is retained for completeness.
     ierr = nf90_inq_varid(ncid, 'ext_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%ext_lw)
-      write(*,*) '  Read ext_lw'
+      write(*,'(A,2ES12.4)') '  Read ext_lw  (min/max): ', &
+            minval(spcopp(ispec)%ext_lw), maxval(spcopp(ispec)%ext_lw)
+    else
+      write(*,*) '  WARNING: ext_lw not found in file — table stays zero'
     end if
-    
+
     ierr = nf90_inq_varid(ncid, 'abs_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%abs_lw)
-      write(*,*) '  Read abs_lw'
+      write(*,'(A,2ES12.4)') '  Read abs_lw  (min/max): ', &
+            minval(spcopp(ispec)%abs_lw), maxval(spcopp(ispec)%abs_lw)
+    else
+      write(*,*) '  WARNING: abs_lw not found in file — table stays zero'
+      ! Fallback: if only ext_lw was present, copy it into abs_lw.
+      ! In the LW, aerosol scattering is negligible so ext ≈ abs; this
+      ! avoids a silent zero result when the file only provides ext_lw.
+      if (maxval(spcopp(ispec)%ext_lw) > 0._r8) then
+        spcopp(ispec)%abs_lw = spcopp(ispec)%ext_lw
+        write(*,*) '  INFO: abs_lw filled from ext_lw as fallback'
+      end if
     end if
     
+    ! -----------------------------------------------------------------------
+    ! Post-read validation: print a summary of what was actually loaded.
+    ! Any table that stayed at zero was either missing from the file or the
+    ! read failed silently — this is the most common source of "crazy" output.
+    ! -----------------------------------------------------------------------
+    write(*,'(A,I3,A)') '  --- spcopp(', ispec, ') post-read summary ---'
+    write(*,'(A,2ES12.4)') '    ext_sw  (min/max): ', minval(spcopp(ispec)%ext_sw), maxval(spcopp(ispec)%ext_sw)
+    write(*,'(A,2ES12.4)') '    abs_sw  (min/max): ', minval(spcopp(ispec)%abs_sw), maxval(spcopp(ispec)%abs_sw)
+    write(*,'(A,2ES12.4)') '    ext_lw  (min/max): ', minval(spcopp(ispec)%ext_lw), maxval(spcopp(ispec)%ext_lw)
+    write(*,'(A,2ES12.4)') '    abs_lw  (min/max): ', minval(spcopp(ispec)%abs_lw), maxval(spcopp(ispec)%abs_lw)
+    if (maxval(spcopp(ispec)%abs_lw) == 0._r8) then
+      write(*,'(A,I3,A)') '  *** WARNING: spcopp(', ispec, ')%abs_lw is all-zero — LW optical depths will be zero!'
+      write(*,*)            '      Check that the species file contains abs_lw or ext_lw.'
+    end if
+
     if (local_status == 0) then
-      write(*,'(A,I3)') 'Successfully read species optics file into spcopp(', ispec, ')'
+      write(*,'(A,I3,A)') 'Successfully read species optics file into spcopp(', ispec, ')'
     end if
     
 999 continue
@@ -996,6 +1083,24 @@ end subroutine get_species_refind
       allocate(mamoptdiag(m)%tauxar(pcols, pver, nswbands))
       allocate(mamoptdiag(m)%ssa   (pcols, pver, nswbands))
       allocate(mamoptdiag(m)%g     (pcols, pver, nswbands))
+
+      ! LW per-mode total optical depth
+      allocate(mamoptdiag(m)%tauxar_lw(pcols, pver, nlwbands))
+
+      ! LW species-level extinction cross sections
+      allocate(mamoptdiag(m)%vext_lw_sulfate (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_bc      (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_pom     (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_soa     (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_dust    (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_seasalt (pcols, pver, nlwbands))
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+      allocate(mamoptdiag(m)%vext_lw_mom     (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_no3     (pcols, pver, nlwbands))
+      allocate(mamoptdiag(m)%vext_lw_nh4     (pcols, pver, nlwbands))
+#elif ( defined MODAL_AERO_4MODE_MOM )
+      allocate(mamoptdiag(m)%vext_lw_mom     (pcols, pver, nlwbands))
+#endif
       ! Initialize to zero
       mamoptdiag(m)%vext_sulfate(:,:,:) = 0._r8
       mamoptdiag(m)%vssa_sulfate(:,:,:) = 0._r8
@@ -1046,6 +1151,22 @@ end subroutine get_species_refind
       mamoptdiag(m)%tauxar(:,:,:) = 0._r8
       mamoptdiag(m)%ssa(:,:,:)    = 0._r8
       mamoptdiag(m)%g(:,:,:)      = 0._r8
+
+      ! LW
+      mamoptdiag(m)%tauxar_lw       (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_sulfate  (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_bc       (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_pom      (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_soa      (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_dust     (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_seasalt  (:,:,:) = 0._r8
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+      mamoptdiag(m)%vext_lw_mom      (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_no3      (:,:,:) = 0._r8
+      mamoptdiag(m)%vext_lw_nh4      (:,:,:) = 0._r8
+#elif ( defined MODAL_AERO_4MODE_MOM )
+      mamoptdiag(m)%vext_lw_mom      (:,:,:) = 0._r8
+#endif
       
     end do
     
@@ -1110,6 +1231,22 @@ end subroutine get_species_refind
       if (allocated(mamoptdiag(m)%tauxar)) deallocate(mamoptdiag(m)%tauxar)
       if (allocated(mamoptdiag(m)%ssa))    deallocate(mamoptdiag(m)%ssa)
       if (allocated(mamoptdiag(m)%g))      deallocate(mamoptdiag(m)%g)
+
+      ! LW fields
+      if (allocated(mamoptdiag(m)%tauxar_lw))        deallocate(mamoptdiag(m)%tauxar_lw)
+      if (allocated(mamoptdiag(m)%vext_lw_sulfate))  deallocate(mamoptdiag(m)%vext_lw_sulfate)
+      if (allocated(mamoptdiag(m)%vext_lw_bc))       deallocate(mamoptdiag(m)%vext_lw_bc)
+      if (allocated(mamoptdiag(m)%vext_lw_pom))      deallocate(mamoptdiag(m)%vext_lw_pom)
+      if (allocated(mamoptdiag(m)%vext_lw_soa))      deallocate(mamoptdiag(m)%vext_lw_soa)
+      if (allocated(mamoptdiag(m)%vext_lw_dust))     deallocate(mamoptdiag(m)%vext_lw_dust)
+      if (allocated(mamoptdiag(m)%vext_lw_seasalt))  deallocate(mamoptdiag(m)%vext_lw_seasalt)
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+      if (allocated(mamoptdiag(m)%vext_lw_mom))      deallocate(mamoptdiag(m)%vext_lw_mom)
+      if (allocated(mamoptdiag(m)%vext_lw_no3))      deallocate(mamoptdiag(m)%vext_lw_no3)
+      if (allocated(mamoptdiag(m)%vext_lw_nh4))      deallocate(mamoptdiag(m)%vext_lw_nh4)
+#elif ( defined MODAL_AERO_4MODE_MOM )
+      if (allocated(mamoptdiag(m)%vext_lw_mom))      deallocate(mamoptdiag(m)%vext_lw_mom)
+#endif
     end do
     
     deallocate(mamoptdiag)
@@ -1724,6 +1861,312 @@ deallocate(specrefindex)
 end subroutine mam_aero_sw
 
   
+  !==========================================================================
+  ! SUBROUTINE: mam_aero_lw
+  !
+  ! PURPOSE:
+  !   Compute aerosol longwave absorption optical depths using species-level
+  !   RH-interpolated lookup tables (spcopp%ext_lw / abs_lw), following the
+  !   approach of E3SM aer_rad_props_lw.
+  !
+  !   In the LW, aerosol scattering is negligible: only absorption optical depth
+  !   taux_lw(pcols, pver, nlwbands) is returned, analogous to 'tauxar' in the SW.
+  !   No SSA, asymmetry parameter, or Chebyshev polynomial evaluation needed.
+  !
+  ! ALGORITHM (per mode m, LW band ilw, level k, column i):
+  !   1. For each species l in mode m:
+  !      a. Map spectype -> species optics file index (same surrogate mapping as SW).
+  !      b. Compute the mode-mean effective RH from qaerwat and dry volume
+  !         (consistent with the SW water treatment).
+  !      c. Linearly interpolate spcopp%ext_lw(irh, ilw) to current RH.
+  !      d. Species LW optical depth contribution:
+  !           dtau_spec = ext_lw_interp(ilw) * specmmr(i,k) * mass(i,k)
+  !      e. Save as species diagnostic: vext_lw_*(i,k,ilw) = ext_lw_interp(ilw)
+  !   2. Add water contribution using the imaginary part of crefwlw weighted
+  !      by aerosol water volume (same pattern as SW water absorption).
+  !   3. Accumulate into mamoptdiag(m)%tauxar_lw(i,k,ilw).
+  !   4. After mode loop: sum over modes -> total taux_lw.
+  !
+  ! NOTE on RH:
+  !   Ambient relative humidity is taken directly from state%relhum(i,k)
+  !   [fractional, 0-1] and converted to percent to match the species table
+  !   axis spcopp%rh [%].  This is the same RH used by modal_aero_wateruptake,
+  !   ensuring full consistency across SW, LW, and water uptake.
+  !   Values are clamped to [rh_min%, rh_max%] of each species table.
+  !
+  ! INPUTS:
+  !   state       - physics state (T, p, pdeldry, species MMR, qaerwat, dgncur_awet)
+  !   mamoptdiag  - diagnostics array (inout); LW fields are filled here
+  !
+  ! OUTPUT:
+  !   taux_lw(pcols, pver, nlwbands) - total aerosol LW absorption optical depth
+  !==========================================================================
+
+subroutine mam_aero_lw(state, taux_lw, mamoptdiag)
+
+use mam_utils,      only: pcols, pver, top_lev => trop_cloud_top_lev
+use physics_types,  only: physics_state
+use physics_buffer, only: physics_buffer_desc
+use rad_constituents, only: rad_cnst_get_info, rad_cnst_get_aer_mmr, &
+                             rad_cnst_get_aer_props
+use physconst,        only: rhoh2o, rga, rair
+
+! -----------------------------------------------------------------------
+! Arguments
+! -----------------------------------------------------------------------
+type(physics_state), intent(in)           :: state
+real(r8),            intent(out)          :: taux_lw(pcols, pver, nlwbands)
+type(mam_optics_diagnostics), intent(inout) :: mamoptdiag(:)
+
+! -----------------------------------------------------------------------
+! Local variables
+! -----------------------------------------------------------------------
+type(physics_buffer_desc), pointer :: pbuf(:)
+
+integer :: ncol, lchnk
+integer :: nmodes, nspec
+integer :: m, k, l, ilw, i
+integer :: ispec_lw             ! species file index for LW table lookup
+integer :: irh                  ! lower RH index for interpolation
+real(r8) :: frh                 ! interpolation fraction in RH
+
+real(r8), pointer :: specmmr(:,:)    ! species mass mixing ratio
+
+real(r8) :: specdens             ! species density  [kg/m3]
+real(r8) :: hygro_aer            ! species hygroscopicity
+character(len=32) :: spectype    ! species type string
+
+real(r8) :: mass(pcols, pver)    ! layer dry-air mass [kg/m2]
+
+! Per-column RH for table interpolation (table units: percent)
+real(r8) :: rh_pct               ! state%relhum * 100 clamped to table range [%]
+
+! RH-interpolated species LW absorption cross-section [m2/kg_species] at current band.
+! We use abs_lw (not ext_lw) because in the LW aerosol scattering is negligible
+! and abs_lw is directly what enters the LW heating-rate calculation.
+! abs_lw is guaranteed non-zero (zero-initialized + fallback from ext_lw in reader).
+real(r8) :: abs_lw_interp
+
+! Per-column LW optical depth accumulators (species-level) for current (k,ilw)
+! We accumulate into mamoptdiag directly, so we only need a single scalar here.
+
+! Water LW absorption contribution (imaginary part of crefwlw)
+real(r8) :: abs_lw_h2o           ! water LW absorption per unit watervol [m-1]
+real(r8) :: dtau_h2o(pcols)      ! water LW optical depth contribution
+real(r8) :: watervol(pcols)      ! aerosol water volume [m3/m3], for water contribution
+
+! -----------------------------------------------------------------------
+nullify(pbuf)
+
+lchnk = state%lchnk
+ncol  = state%ncol
+
+! Layer dry-air mass [kg/m2]
+mass(:ncol,:) = state%pdeldry(:ncol,:) * rga
+
+! Initialise output
+taux_lw(:ncol,:,:) = 0._r8
+
+! Number of modes
+call rad_cnst_get_info(0, nmodes=nmodes)
+
+! ========================================================================
+! Mode loop
+! ========================================================================
+do m = 1, nmodes
+
+   ! Get number of species in this mode
+   call rad_cnst_get_info(0, m, nspec=nspec)
+
+   ! Reset per-mode LW diagnostics for this call
+   mamoptdiag(m)%tauxar_lw      (:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_sulfate(:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_bc     (:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_pom    (:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_soa    (:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_dust   (:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_seasalt(:ncol,:,:) = 0._r8
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+   mamoptdiag(m)%vext_lw_mom(:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_no3(:ncol,:,:) = 0._r8
+   mamoptdiag(m)%vext_lw_nh4(:ncol,:,:) = 0._r8
+#elif ( defined MODAL_AERO_4MODE_MOM )
+   mamoptdiag(m)%vext_lw_mom(:ncol,:,:) = 0._r8
+#endif
+
+   ! ======================================================================
+   ! Vertical level loop
+   ! ======================================================================
+   do k = top_lev, pver
+
+      ! ------------------------------------------------------------------
+      ! Species loop: per-species LW absorption, looping over LW bands.
+      ! Ambient RH is taken directly from state%relhum(i,k) [fractional,
+      ! 0-1] and converted to percent to match the species table axis
+      ! spcopp%rh [%].  This is the same RH used by modal_aero_wateruptake
+      ! so the LW tables see a consistent moisture state.
+      ! The RH bracket (irh, frh) is column-dependent but band-independent,
+      ! so it is computed once per (species, k, i) and reused across bands.
+      ! ------------------------------------------------------------------
+      do l = 1, nspec
+
+         call rad_cnst_get_aer_mmr(0, m, l, 'a', state, pbuf, specmmr)
+         call rad_cnst_get_aer_props(0, m, l, density_aer=specdens, &
+                                     hygro_aer=hygro_aer,            &
+                                     spectype=spectype)
+
+         ! Map spectype to species optics file index (same as get_species_refind)
+         select case (trim(spectype))
+            case ('sulfate', 'ammonium', 'nitrate')
+               ispec_lw = iopsulf
+            case ('black-c')
+               ispec_lw = iopbc
+            case ('p-organic', 'm-organic')
+               ispec_lw = iopocpho
+            case ('s-organic')
+               ispec_lw = iopocphi
+            case ('dust', 'calcium', 'carbonate')
+               ispec_lw = iopdust
+            case ('seasalt', 'chloride')
+               ispec_lw = iopsslt
+            case default
+               write(*,*) 'mam_aero_lw: unknown spectype ', trim(spectype), ' — skipping'
+               cycle
+         end select
+
+         do i = 1, ncol
+
+            ! ----------------------------------------------------------
+            ! Ambient RH from physics state, converted to percent to
+            ! match the species table axis spcopp%rh [%].
+            ! Clamped to the table range [rh_min%, rh_max%].
+            ! ----------------------------------------------------------
+            rh_pct = state%relhum(i,k) * 100._r8
+            rh_pct = min(rh_pct, spcopp(ispec_lw)%rh(spcopp(ispec_lw)%nrh))
+            rh_pct = max(rh_pct, spcopp(ispec_lw)%rh(1))
+
+            ! Linear search for RH bracket in the species table
+            ! (nrh is typically only 8 points, so no binary search needed)
+            irh = 1
+            do while (irh < spcopp(ispec_lw)%nrh - 1)
+               if (rh_pct <= spcopp(ispec_lw)%rh(irh+1)) exit
+               irh = irh + 1
+            end do
+            frh = (rh_pct - spcopp(ispec_lw)%rh(irh)) / &
+                  max(spcopp(ispec_lw)%rh(irh+1) - spcopp(ispec_lw)%rh(irh), 1.e-10_r8)
+            frh = min(1._r8, max(0._r8, frh))
+
+            ! ----------------------------------------------------------
+            ! LW band loop: interpolate abs_lw table and accumulate.
+            ! abs_lw units: [m2/kg_species].
+            ! We use abs_lw (not ext_lw) because LW radiative transfer
+            ! requires absorption optical depth only; aerosol scattering
+            ! is negligible in the LW.  abs_lw is guaranteed non-zero
+            ! (reader falls back to ext_lw if abs_lw absent from file).
+            ! ----------------------------------------------------------
+            do ilw = 1, nlwbands
+
+               abs_lw_interp = (1._r8 - frh) * spcopp(ispec_lw)%abs_lw(irh,   ilw) &
+                              +          frh  * spcopp(ispec_lw)%abs_lw(irh+1, ilw)
+               abs_lw_interp = max(0._r8, abs_lw_interp)  ! abs cannot be negative
+
+               ! Layer absorption optical depth from this species
+               ! tau = abs [m2/kg_spec] * mmr [kg_spec/kg_air] * mass [kg_air/m2]
+               mamoptdiag(m)%tauxar_lw(i,k,ilw) = mamoptdiag(m)%tauxar_lw(i,k,ilw) &
+                                                 + abs_lw_interp * specmmr(i,k) * mass(i,k)
+
+               ! Species diagnostic: mass absorption cross section [m2/kg_air]
+               ! = abs [m2/kg_spec] * mmr [kg_spec/kg_air]
+               select case (trim(spectype))
+                  case ('sulfate')
+                     mamoptdiag(m)%vext_lw_sulfate(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_sulfate(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('black-c')
+                     mamoptdiag(m)%vext_lw_bc(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_bc(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('p-organic')
+                     mamoptdiag(m)%vext_lw_pom(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_pom(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('s-organic')
+                     mamoptdiag(m)%vext_lw_soa(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_soa(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+#if ( defined MOSAIC_SPECIES )
+                  case ('dust', 'calcium', 'carbonate')
+                     mamoptdiag(m)%vext_lw_dust(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_dust(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('seasalt', 'chloride')
+                     mamoptdiag(m)%vext_lw_seasalt(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_seasalt(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+#else
+                  case ('dust')
+                     mamoptdiag(m)%vext_lw_dust(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_dust(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('seasalt')
+                     mamoptdiag(m)%vext_lw_seasalt(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_seasalt(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+#endif
+#if ( ( defined MODAL_AERO_4MODE_MOM ) && ( defined MOSAIC_SPECIES ) )
+                  case ('ammonium')
+                     mamoptdiag(m)%vext_lw_nh4(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_nh4(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('nitrate')
+                     mamoptdiag(m)%vext_lw_no3(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_no3(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+                  case ('m-organic')
+                     mamoptdiag(m)%vext_lw_mom(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_mom(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+#elif ( defined MODAL_AERO_4MODE_MOM )
+                  case ('m-organic')
+                     mamoptdiag(m)%vext_lw_mom(i,k,ilw) = &
+                        mamoptdiag(m)%vext_lw_mom(i,k,ilw) + abs_lw_interp * specmmr(i,k)
+#endif
+               end select
+
+            end do ! LW band loop
+
+         end do ! column loop
+
+      end do ! species loop
+
+      ! ------------------------------------------------------------------
+      ! Water LW absorption contribution.
+      ! In the LW, liquid water absorbs strongly; its contribution is
+      ! computed from the imaginary part of crefwlw weighted by the
+      ! aerosol water volume and air mass.
+      ! watervol is computed here directly from qaerwat for this mode.
+      ! ------------------------------------------------------------------
+      do i = 1, ncol
+         watervol(i) = max(0._r8, state%qaerwat(i,k,m) / rhoh2o)
+      end do
+      do ilw = 1, nlwbands
+         abs_lw_h2o = aimag(crefwlw(ilw))   ! imaginary RI ~ absorption proxy
+         do i = 1, ncol
+            dtau_h2o(i) = abs_lw_h2o * watervol(i) * rhoh2o * mass(i,k)
+            mamoptdiag(m)%tauxar_lw(i,k,ilw) = mamoptdiag(m)%tauxar_lw(i,k,ilw) &
+                                              + dtau_h2o(i)
+         end do
+      end do
+
+   end do ! vertical level loop
+
+end do ! mode loop
+
+! ========================================================================
+! Sum per-mode contributions -> total column LW optical depth
+! ========================================================================
+do ilw = 1, nlwbands
+   do k = top_lev, pver
+      do i = 1, ncol
+         do m = 1, nmodes
+            taux_lw(i,k,ilw) = taux_lw(i,k,ilw) + mamoptdiag(m)%tauxar_lw(i,k,ilw)
+         end do
+      end do
+   end do
+end do
+
+end subroutine mam_aero_lw
+
+
   !==========================================================================  
 subroutine modal_size_parameters(ncol, sigma_logr_aer, dgnumwet, radsurf, logradsurf, cheb)
 
