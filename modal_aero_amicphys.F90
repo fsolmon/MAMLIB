@@ -609,6 +609,8 @@ main_i_loop: &
             relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
          end if
       end if
+!FAB test nitrate
+          relhumsub(:) = relhumgcm
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
       if ( ldiag13n ) then
       write(lun13n,'(/a,3i5)') 'modal_aero_amicphys_intr mapping at nstep, i, k', nstep, i, k
@@ -1842,7 +1844,6 @@ do_cond_if_block10: &
 #if ( defined MOSAIC_SPECIES )
     if ( mosaic ) then
          tmp_relhum = min( relhum, 0.98_r8 )
-         print* , "tmp_relhum", tmp_relhum 
          call mosaic_gasaerexch_1subarea_intr(     nstep,                &!Intent(ins)
               lchnk,             i,                k,           jsub,    &
               temp,              tmp_relhum,       pmid,                 &
