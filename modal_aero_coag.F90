@@ -58,7 +58,11 @@
 !----------------------------------------------------------------------
 !BOC
 
-! list private module data here
+! precomputed exp factors for each coagulation pair (filled in modal_aero_coag_init)
+! depends only on mode log-sigma constants, so computed once at startup
+  real(r8) :: exp2lsgac_acoag(maxpair_acoag)   ! exp(2*alnsg_amode(modetoo)^2)
+  real(r8) :: exp2lsgat_acoag(maxpair_acoag)   ! exp(2*alnsg_amode(modefrm)^2)
+  real(r8) :: exp45lsgat_acoag(maxpair_acoag)  ! exp(4.5*alnsg_amode(modefrm)^2)
 
 !EOC
 !----------------------------------------------------------------------
@@ -91,7 +95,8 @@
    use physconst,        only: pi
    use chem_mods,        only: adv_mass
    use constituents,     only: pcnst, cnst_name
-   use physconst,        only: gravit, mwdry, r_universal
+   use physconst,        only: gravit, mwdry, r_universal, &
+                               p0_coag => pstd, tmelt, boltz
 
    implicit none
 
@@ -169,11 +174,15 @@
 	real(r8) :: wetdens_frm, wetdens_too, wetdgnum_frm, wetdgnum_too
 	real(r8) :: xbetaij0, xbetaij2i, xbetaij2j, xbetaij3, &
                     xbetaii0, xbetaii2,  xbetajj0,  xbetajj2     
-      	real(r8) :: xferamt, xferfracvol, xferfrac_pcage, xferfrac_max
+      	real(r8) :: xferamt, xferfracvol, xferfrac_pcage
+	real(r8), parameter :: xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)
 	real(r8) :: xnumbconc(ntot_amode)
 	real(r8) :: xnumbconcavg(ntot_amode), xnumbconcnew(ntot_amode)
 	real(r8) :: ybetaij0(maxpair_acoag), ybetaij3(maxpair_acoag)
 	real(r8) :: ybetaii0(maxpair_acoag), ybetajj0(maxpair_acoag)
+	real(r8) :: sqrt_temp_ik, amu_ik, lamda_ik, knc_ik
+	real(r8), parameter :: two3r8 = 2.0_r8/3.0_r8
+	real(r8), parameter :: t0_coag = 288.15_r8  ! tmelt + 15.0 (standard surface temp)
 
         real(r8) :: dqdt(ncol,pver,pcnstxx)  ! TMR "dq/dt" array - NOTE dims
         logical  :: dotend(pcnst)            ! identifies the species that
@@ -218,8 +227,6 @@
 	deltat = deltat_main
 	nfreqcoag = max( 1, nint( deltat/deltat_main ) )
 	jfreqcoag = nfreqcoag/2
-	xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)   ! 1-eps
-
 	if (nfreqcoag .gt. 1) then
 	    if ( mod(nstep,nfreqcoag) .ne. jfreqcoag ) return
 	end if
@@ -310,6 +317,13 @@ main_i: do i = 1, ncol
 	    iselfcoagdone(n) = 0
 	end do
 
+!   compute temperature/pressure-dependent air properties once per (i,k)
+!   shared across all ipairs to avoid repeating inside the ipair loop
+	sqrt_temp_ik = sqrt( t(i,k) )
+	amu_ik   = 1.458e-6_r8 * t(i,k) * sqrt_temp_ik / ( t(i,k) + 110.4_r8 )
+	lamda_ik = 6.6328e-8_r8 * p0_coag * t(i,k) / ( t0_coag * pmid(i,k) )
+	knc_ik   = two3r8 * boltz * t(i,k) / amu_ik
+
 !
 !   calculate coagulation rates for each pair
 !
@@ -330,7 +344,12 @@ main_ipair1: do ipair = 1, npair_acoag
           alnsg_amode(modefrm),         alnsg_amode(modetoo),          &
           wetdens_a(i,k,modefrm),       wetdens_a(i,k,modetoo),        &
           xbetaij0, xbetaij2i, xbetaij2j, xbetaij3,                    &
-          xbetaii0, xbetaii2,  xbetajj0,  xbetajj2                     )
+          xbetaii0, xbetaii2,  xbetajj0,  xbetajj2,                    &
+          sqrt_temp_in=sqrt_temp_ik, amu_in=amu_ik,                    &
+          lamda_in=lamda_ik,          knc_in=knc_ik,                   &
+          exp2lsgac_in=exp2lsgac_acoag(ipair),                         &
+          exp2lsgat_in=exp2lsgat_acoag(ipair),                         &
+          exp45lsgat_in=exp45lsgat_acoag(ipair)                        )
 
 
 !   test diagnostics begin --------------------------------------------
@@ -893,6 +912,16 @@ aa_iqfrm: do iqfrm = 1, nspec_amode(mfrm)
 	nspecfrm_acoag(ipair) = nspec
 	end do aa_ipair
 
+!   precompute exp factors that depend only on mode log-sigma constants
+	do ipair = 1, npair_acoag
+	    associate( lsgat => alnsg_amode(modefrm_acoag(ipair)), &
+	               lsgac => alnsg_amode(modetoo_acoag(ipair))  )
+	        exp2lsgac_acoag(ipair)  = exp( 2.0_r8 * lsgac * lsgac )
+	        exp2lsgat_acoag(ipair)  = exp( 2.0_r8 * lsgat * lsgat )
+	        exp45lsgat_acoag(ipair) = exp( 4.5_r8 * lsgat * lsgat )
+	    end associate
+	end do
+
 !
 !   output results
 !
@@ -998,7 +1027,9 @@ aa_iqfrm: do iqfrm = 1, nspec_amode(mfrm)
           xxlsgat, xxlsgac,                       &
           pdensat, pdensac,                       &
           betaij0, betaij2i, betaij2j, betaij3,   &
-          betaii0, betaii2, betajj0, betajj2      )
+          betaii0, betaii2, betajj0, betajj2,     &
+          sqrt_temp_in, amu_in, lamda_in, knc_in, &
+          exp2lsgac_in, exp2lsgat_in, exp45lsgat_in )
         use physconst, only: p0 => pstd, &
                              tmelt, &
                              boltz
@@ -1030,6 +1061,17 @@ aa_iqfrm: do iqfrm = 1, nspec_amode(mfrm)
       real(r8), intent(out) :: betaij0, betaij2i, betaij2j, betaij3,   &
                                betaii0, betaii2,  betajj0,  betajj2
 
+! *** optional precomputed air properties (hoisted from caller to avoid
+!     recomputing for every mode pair at the same (i,k) location)
+      real(r8), intent(in), optional :: sqrt_temp_in  ! sqrt(airtemp)
+      real(r8), intent(in), optional :: amu_in        ! dynamic viscosity [kg/m/s]
+      real(r8), intent(in), optional :: lamda_in      ! mean free path [m]
+      real(r8), intent(in), optional :: knc_in        ! near-continuum coeff [m3/s]
+! *** optional precomputed exp factors (depend only on log-sigma constants,
+!     so computed once per pair in modal_aero_coag_init)
+      real(r8), intent(in), optional :: exp2lsgac_in  ! exp(2*xxlsgac^2)
+      real(r8), intent(in), optional :: exp2lsgat_in  ! exp(2*xxlsgat^2)
+      real(r8), intent(in), optional :: exp45lsgat_in ! exp(4.5*xxlsgat^2)
 
 ! *** local parameters
       real(r8) :: t0  ! standard surface temperature (15 deg C) [ k ]
@@ -1061,31 +1103,19 @@ aa_iqfrm: do iqfrm = 1, nspec_amode(mfrm)
 
       real(r8)    dumacc2, dumatk2, dumatk3
 
-      t0 = tmelt + 15._r8
+      if (present(sqrt_temp_in)) then
+          sqrt_temp = sqrt_temp_in
+          amu       = amu_in
+          lamda     = lamda_in
+          knc       = knc_in
+      else
+          t0 = tmelt + 15._r8
+          sqrt_temp = sqrt( airtemp )
+          amu   = 1.458e-6_r8 * airtemp * sqrt_temp / ( airtemp + 110.4_r8 )
+          lamda = 6.6328e-8_r8 * p0 * airtemp / ( t0 * airprs )
+          knc   = two3 * boltz * airtemp / amu
+      end if
 
-      sqrt_temp = sqrt( airtemp)
-
-! *** calculate mean free path [ m ]:
-!     6.6328e-8 is the sea level value given in table i.2.8
-!     on page 10 of u.s. standard atmosphere 1962
-      lamda = 6.6328e-8_r8 * p0 * airtemp  / ( t0 * airprs )
-
-! *** calculate dynamic viscosity [ kg m**-1 s**-1 ]:
-!     u.s. standard atmosphere 1962 page 14 expression
-!     for dynamic viscosity is:
-!     dynamic viscosity =  beta * t * sqrt(t) / ( t + s)
-!     where beta = 1.458e-6 [ kg sec^-1 k**-0.5 ], s = 110.4 [ k ].
-      amu = 1.458e-6_r8 * airtemp * sqrt_temp / ( airtemp + 110.4_r8 )
-
-! *** coagulation
-!     calculate coagulation coefficients using a method dictated by
-!     the value of fastcoag_flag.  if true, the computationally-
-!     efficient getcoags routine is used.  if false, the more intensive
-!     gauss-hermite numerical quadrature method is used.  see section
-!     2.1 of bhave et al. (2004) for further discussion.
-
-! *** calculate term used in equation a6 of binkowski & shankar (1995)
-      knc      = two3 * boltz *  airtemp / amu
 ! *** calculate terms used in equation a5 of binkowski & shankar (1995)
       kfmat    = sqrt( 3.0_r8 * boltz * airtemp / pdensat )
       kfmac    = sqrt( 3.0_r8 * boltz * airtemp / pdensac )
@@ -1105,9 +1135,15 @@ aa_iqfrm: do iqfrm = 1, nspec_amode(mfrm)
 
 ! convert from the "cmaq" coag rate parameters 
 ! to the "mirage2" parameters
-        dumacc2 = ( (dgacc**2) * exp( 2.0_r8*xxlsgac*xxlsgac ) )
-        dumatk2 = ( (dgatk**2) * exp( 2.0_r8*xxlsgat*xxlsgat ) )
-        dumatk3 = ( (dgatk**3) * exp( 4.5_r8*xxlsgat*xxlsgat ) )
+        if (present(exp2lsgac_in)) then
+            dumacc2 = dgacc**2 * exp2lsgac_in
+            dumatk2 = dgatk**2 * exp2lsgat_in
+            dumatk3 = dgatk**3 * exp45lsgat_in
+        else
+            dumacc2 = ( (dgacc**2) * exp( 2.0_r8*xxlsgac*xxlsgac ) )
+            dumatk2 = ( (dgatk**2) * exp( 2.0_r8*xxlsgat*xxlsgat ) )
+            dumatk3 = ( (dgatk**3) * exp( 4.5_r8*xxlsgat*xxlsgat ) )
+        end if
 
         betaii0  = max( 0.0_r8, batat(1) )
         betajj0  = max( 0.0_r8, bacac(1) )

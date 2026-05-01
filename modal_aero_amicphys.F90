@@ -282,7 +282,8 @@ subroutine modal_aero_amicphys_intr(                             &
 #endif
                         dgncur_a,           dgncur_awet,         &
                         wetdens_host,                            &
-                        qaerwat                                  )
+                        qaerwat,                                 &
+                        pH_aer_out                               ) ! FAB
 
 
 ! !USES:
@@ -350,6 +351,8 @@ implicit none
    real(r8), intent(inout), optional :: &
                               qaerwat(pcols,pver,ntot_amode)
                                  ! aerosol water mixing ratio (kg/kg, NOT mol/mol)
+   real(r8), intent(inout), optional :: &                              ! FAB
+              pH_aer_out(pcols,pver,ntot_amode)                        ! FAB: aerosol pH per mode [-3,14]
 
 ! !DESCRIPTION: 
 ! calculates changes to gas and aerosol TMRs (tracer mixing ratios) from
@@ -1099,6 +1102,7 @@ main_i_loop: &
            awater_valid(i,k,n) = 0.0_r8
          end if
      end do
+     if (present(pH_aer_out)) pH_aer_out(i,k,:) = pH_valid(i,k,:) ! FAB
 #endif
 
       end do main_i_loop
@@ -3818,11 +3822,10 @@ time_loop: &
       real(r8) :: tmp_alnsg2(max_mode)
       real(r8) :: v2nhirlx(ntot_amode), v2nlorlx(ntot_amode)
       real(r8) :: xfercoef, xfertend
-      real(r8) :: xferfrac_vol, xferfrac_num, xferfrac_max
+      real(r8) :: xferfrac_vol, xferfrac_num
+      real(r8), parameter :: xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)
       real(r8) :: yn_tail, yv_tail
 
-
-      xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)   ! 1-eps
 
 ! calculate variable used in the renamingm mode" of each renaming pair
 ! also compute dry-volume change during the continuous growth process
@@ -4958,7 +4961,8 @@ mainloop1_ipair:  do n = 1, ntot_amode
       real(r8) :: fac_volsfc
       real(r8) :: tmpa, tmp1, tmp2, tmp3, tmp4
       real(r8) :: vol_core, vol_shell
-      real(r8) :: xferfrac_max, xferfrac_pcage
+      real(r8), parameter :: xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)
+      real(r8) :: xferfrac_pcage
 
 
 ! 
@@ -5031,7 +5035,7 @@ agepair_loop1: &
 !   But ratio1/ratio2 == tmp1/tmp2, and coding below avoids possible overflow 
 !
       fac_volsfc = exp( 2.5*(alnsg_aer(nfrm)**2) )
-      xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)   ! 1-eps
+
 
       tmp1 = vol_shell*dgn_a(nfrm)*fac_volsfc
       tmp2 = max( 6.0_r8*dr_so4_monolayers_pcage*vol_core, 0.0_r8 )

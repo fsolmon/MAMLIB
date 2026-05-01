@@ -183,7 +183,8 @@ implicit none
    real (r8) :: uptkratebb(ntot_amode), uptkrate_soa(ntot_amode)  
                 ! gas-to-aerosol mass transfer rates (1/s)
    real (r8) :: vol_core, vol_shell
-   real (r8) :: xferfrac_pcage, xferfrac_max
+   real (r8) :: xferfrac_pcage
+   real(r8), parameter :: xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)
    real (r8) :: xferrate
 
    logical  :: do_msag         ! true if msa gas is a species
@@ -324,7 +325,6 @@ implicit none
          fac_m2v_pcarbon(l) = specmw_amode(l2) / specdens_amode(l2)
       end do
       fac_volsfc_pcarbon = exp( 2.5_r8*(alnsg_amode(n)**2) )
-      xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)   ! 1-eps
    end if
 
 
@@ -426,9 +426,16 @@ implicit none
         end if
 
 !   uptake amount (fraction of gas uptaken) over deltat
-        avg_uprt_so4 = (1.0_r8 - exp(-deltatxx*sum_uprt_so4))/deltatxx
-        avg_uprt_nh4 = (1.0_r8 - exp(-deltatxx*sum_uprt_nh4))/deltatxx
-        avg_uprt_soa = (1.0_r8 - exp(-deltatxx*sum_uprt_soa))/deltatxx
+!   skip exp() when sum is zero (result is zero by L'Hopital)
+        avg_uprt_so4 = 0.0_r8
+        if (sum_uprt_so4 > 0.0_r8) &
+            avg_uprt_so4 = (1.0_r8 - exp(-deltatxx*sum_uprt_so4))/deltatxx
+        avg_uprt_nh4 = 0.0_r8
+        if (sum_uprt_nh4 > 0.0_r8) &
+            avg_uprt_nh4 = (1.0_r8 - exp(-deltatxx*sum_uprt_nh4))/deltatxx
+        avg_uprt_soa = 0.0_r8
+        if (sum_uprt_soa > 0.0_r8) &
+            avg_uprt_soa = (1.0_r8 - exp(-deltatxx*sum_uprt_soa))/deltatxx
  
 !   sum_dqdt_so4 = so4_a tendency from h2so4 gas uptake (mol/mol/s)
 !   sum_dqdt_msa = msa_a tendency from msa   gas uptake (mol/mol/s)
@@ -897,6 +904,9 @@ implicit none
    real(r8) :: freepathx2, fuchs_sutugin
    real(r8) :: knudsen
    real(r8) :: lndp, lndpgn, lnsg
+   real(r8) :: lnsg_n              ! log(sigmag_amode(n)) hoisted outside (k,i) loops
+   real(r8) :: half_beta2_lnsg2_n  ! 0.5*(beta*lnsg_n)^2 hoisted outside (k,i) loops
+   real(r8) :: lndp_offset_n(nghq) ! beta*lnsg_n^2 + root2*lnsg_n*xghq(iq) per quad point
    real(r8) :: num_a
    real(r8) :: rhoair
    real(r8) :: sumghq
@@ -925,6 +935,13 @@ implicit none
 !                            + max(0.0_r8,q(1:ncol,:,la))*dum_m2v
 !      end do
 
+!   hoist mode-only terms outside the (k,i) loops
+      lnsg_n = log( sigmag_amode(n) )
+      half_beta2_lnsg2_n = 0.5_r8*(beta*lnsg_n)**2
+      do iq = 1, nghq
+         lndp_offset_n(iq) = beta*lnsg_n**2 + root2*lnsg_n*xghq(iq)
+      end do
+
 ! loops k and i
       do k=top_lev,pver
       do i=1,ncol
@@ -948,14 +965,13 @@ implicit none
 !   freepathx2 = 2 * (h2so4 mean free path)  (m)
          freepathx2 = 6.0_r8*gasdiffus/gasspeed
 
-         lnsg   = log( sigmag_amode(n) )
          lndpgn = log( dgncur_awet(i,k,n) )   ! (m)
-         const  = tworootpi * num_a * exp(beta*lndpgn + 0.5_r8*(beta*lnsg)**2)
+         const  = tworootpi * num_a * exp(beta*lndpgn + half_beta2_lnsg2_n)
          
 !   sum over gauss-hermite quadrature points
          sumghq = 0.0_r8
          do iq = 1, nghq
-            lndp = lndpgn + beta*lnsg**2 + root2*lnsg*xghq(iq)
+            lndp = lndpgn + lndp_offset_n(iq)
             dp = exp(lndp)
 
 !   knudsen number
@@ -967,7 +983,7 @@ implicit none
             fuchs_sutugin = (0.4875_r8*(1._r8 + knudsen)) /   &
                             (knudsen*(1.184_r8 + knudsen) + 0.4875_r8)
 
-            sumghq = sumghq + wghq(iq)*dp*fuchs_sutugin/(dp**beta)
+            sumghq = sumghq + wghq(iq)*fuchs_sutugin/dp
          end do
          uptkrate(n,i,k) = const * gasdiffus * sumghq    
 

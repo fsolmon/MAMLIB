@@ -175,7 +175,8 @@
    real (r8) :: tailfr_numnew, tailfr_numold
    real (r8) :: v2nhirlx(ntot_amode), v2nlorlx(ntot_amode)
    real (r8) :: xfercoef, xfertend
-   real (r8) :: xferfrac_vol, xferfrac_num, xferfrac_max
+   real (r8) :: xferfrac_vol, xferfrac_num
+   real(r8), parameter :: xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)
 
    real (r8) :: yn_tail, yv_tail
 
@@ -215,7 +216,7 @@
 	deltatinv = 1.0_r8/(deltat*(1.0_r8 + 1.0e-15_r8))
 	onethird = 1.0_r8/3.0_r8
 	frelax = 27.0_r8
-	xferfrac_max = 1.0_r8 - 10.0_r8*epsilon(1.0_r8)   ! 1-eps
+
 
 	do n = 1, ntot_amode
 	    idomode(n) = 0
