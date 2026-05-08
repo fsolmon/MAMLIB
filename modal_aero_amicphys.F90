@@ -609,8 +609,6 @@ main_i_loop: &
             relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
          end if
       end if
-!FAB test nitrate
-          relhumsub(:) = relhumgcm
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
       if ( ldiag13n ) then
       write(lun13n,'(/a,3i5)') 'modal_aero_amicphys_intr mapping at nstep, i, k', nstep, i, k
