@@ -43,10 +43,17 @@
        MW_a, MW_c, dens_comp_a, mw_comp_a, ref_index_a, rtol_mesa, jsalt_index,    &
        jsulf_poor, jsulf_rich, ih2so4_g,                                &
        iso4_a, jtotal,                                                             & !for debug only remove it later BALLI
+       ihno3_g,                                                                    & !for AMICDIAG_MESA
+!++DBG
+       ino3_a, inh4_a, ica_a,                                                      & !for ASTEM substep diagnostics
+!--DBG
        mosaic_vars_aa_type
   
   use module_mosaic_ext, only: aerosol_phase_state,calc_dry_n_wet_aerosol_props,   &
        aerosolmtc
+!++DBG
+  use mam_utils, only: iulog
+!--DBG
   
 ! use module_print_aer,  only: print_aer
 
@@ -191,6 +198,17 @@
            ri_shell_a, ri_core_a, ri_avg_a                                )  ! output
      endif
   enddo
+  ! AMICDIAG_MESA: print water_a and jaerosolstate after aerosol_phase_state (MESA)
+!++DBG
+  if (mcall_print_aer == 1) then
+     write(iulog,'(a,i4,2x,a,4es12.4)') 'AMICDIAG_MESA it=',mosaic_vars_aa%it_mosaic, &
+         'water_a(kg/m3)=', water_a(1:4)
+     write(iulog,'(a,i4,2x,a,4i4,2x,a,i6)') 'AMICDIAG_MESA it=',mosaic_vars_aa%it_mosaic, &
+         'jaerosolstate=', jaerosolstate(1:4), &
+         'niter_MESA=', mosaic_vars_aa%niter_MESA_max
+  end if
+!--DBG
+
   call check_astem_negative( 1, mosaic_vars_aa%xnerr_astem_negative, &
                                 mosaic_vars_aa%fix_astem_negative, aer, gas )
 
@@ -203,7 +221,17 @@
   
 
   ! compute new gas-aerosol mass transfer coefficients
-  call aerosolmtc( jaerosolstate, num_a, Dp_wet_a, sigmag_a, P_atm, T_K, aH2O, aer, kg ) ! RAZ: 6/14/2017
+  call aerosolmtc( jaerosolstate, num_a, Dp_wet_a, sigmag_a, P_atm, T_K, aH2O, aer, mw_aer_mac, kg ) !FAB: added mw_aer_mac for OIN-based dust mass fraction
+
+  ! AMICDIAG_KG: print inputs/output of aerosolmtc to diagnose kg discrepancy
+!++DBG
+  if (mcall_print_aer == 1) then
+     write(iulog,'(a,i4,2x,a,4es12.4)') 'AMICDIAG_KG it=',mosaic_vars_aa%it_mosaic,'num_a(1:4)=', num_a(1:4)
+     write(iulog,'(a,i4,2x,a,4es12.4)') 'AMICDIAG_KG it=',mosaic_vars_aa%it_mosaic,'Dp_wet_a_cm(1:4)=', Dp_wet_a(1:4)
+     write(iulog,'(a,i4,2x,a,4es12.4)') 'AMICDIAG_KG it=',mosaic_vars_aa%it_mosaic,'kg_HNO3(1:4)=', kg(ihno3_g,1:4)
+     write(iulog,'(a,i4,2x,a,4es12.4)') 'AMICDIAG_KG it=',mosaic_vars_aa%it_mosaic,'aer_Ca_jtot(1:4)=', aer(ica_a,jtotal,1:4)
+  end if
+!--DBG
 
   uptkrate_h2so4 = sum( kg(ih2so4_g,1:nbin_a) )
 
@@ -359,8 +387,14 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
        nrxn_aer_sg, nrxn_aer_sl, nsalt, MDRH_T_NUM, jsulf_poor_NUM, jsulf_rich_NUM,    &
        jnh4cl, jnh4no3,                                                            &!TBD
        iso4_a, inh3_g, ihno3_g, ihcl_g,                                            & ! RAZ 2/2/2015: bugfix
+!++DBG
+       ino3_a, inh4_a,                                                             & ! for ASTEM substep diagnostics
+!--DBG
        mosaic_vars_aa_type
 
+!++DBG
+  use mam_utils, only: iulog
+!--DBG
   use module_mosaic_ext, only: do_full_deliquescence,form_electrolytes
   
 
@@ -682,7 +716,22 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
      
 40 continue
   !------------------------------------------
-     
+
+!++DBG per-ASTEM-substep diagnostics
+  if (mosaic_vars_aa%ldbg == 1) then
+     write(iulog,'(a,i4,a,i3,a,3(1pe12.4))') &
+          'ASTEM_STEP it=',mosaic_vars_aa%it_mosaic, &
+          ' sub=',mosaic_vars_aa%isteps_ASTEM, &
+          ' gas_HNO3/aer1_NO3/aer1_NH4=', &
+          gas(ihno3_g), aer(ino3_a,jtotal,1), aer(inh4_a,jtotal,1)
+     write(iulog,'(a,i4,a,i3,a,i6,a,4(1pe12.4))') &
+          'ASTEM_STEP it=',mosaic_vars_aa%it_mosaic, &
+          ' sub=',mosaic_vars_aa%isteps_ASTEM, &
+          ' niter_MESA=',mosaic_vars_aa%niter_MESA_max, &
+          ' water_a=',water_a(1),water_a(2),water_a(3),water_a(4)
+  end if
+!--DBG
+
   ! update time
   t_old = t_new
   
@@ -1183,7 +1232,7 @@ subroutine ASTEM_flux_wet(ibin, ieqblm_ASTEM, sfc_a, df_gas_s, df_gas_l,        
        ngas_aerchtot, ngas_volatile, nelectrolyte,                               &
        Ncation, naer, jliquid, jsolid, mNO, mYES, Nanion, nrxn_aer_gl, nrxn_aer_ll,   &
        jcaco3, inh4_a, inh3_g, ihno3_g, ino3_a, ihcl_g, icl_a, jnh4no3, jnh4cl,       &
-       mosaic_vars_aa_type
+       jc_h, mosaic_vars_aa_type
 
   use module_mosaic_ext,  only: compute_activities, ions_to_electrolytes,           &
        absorb_tiny_nh4no3, absorb_tiny_nh4cl, absorb_tiny_hno3, absorb_tiny_hcl
@@ -1260,9 +1309,40 @@ subroutine ASTEM_flux_wet(ibin, ieqblm_ASTEM, sfc_a, df_gas_s, df_gas_l,        
   
   !-------------------------------------------------------------------
   ! CASE 2: Sulfate-Rich Domain
-  
+  !
+  ! XT = (NH4+Na+2Ca)/(SO4+0.5MSA): case2 applies when XT < 2 (excess SO4 over cations).
+  !
+  ! KNOWN LIMITATION (edge case relevant when aerosol NO3 is substantial):
+  ! ions_to_electrolytes partitions only the NH4-SO4 system; NO3 and Cl are excluded
+  ! from XT and from the electrolyte balance. When significant aerosol NO3 is present,
+  ! it neutralises NH4+ independently of SO4, reducing the effective H+ available to
+  ! suppress NH3 equilibrium. However compute_activities still sees mc_H from the
+  ! NH4-SO4 balance alone, which can be near-zero even though the full charge balance
+  !   H+ = (2*SO4 + NO3 + Cl) - (NH4 + Na + 2Ca)  >> 0.
+  ! In that situation the case2 formula  sfc_NH3 ∝ mc_NH4/mc_H  diverges, returning
+  ! an equilibrium NH3 surface concentration that greatly exceeds gas-phase NH3.
+  ! The result is spurious NH3 evaporation from the aerosol and unconstrained HNO3
+  ! condensation (sfc_HNO3 = 0 always in case2).
+  !
+  ! Guard: when mc_H from compute_activities is below 1e-2 mol/kg despite XT < 2,
+  ! it signals this mismatch (the NO3/Cl anions are providing charge balance that
+  ! ions_to_electrolytes did not account for). In that case skip case2 and fall
+  ! through to case3 (NH4NO3 joint equilibrium), which handles the neutral-aerosol
+  ! regime correctly and allows both NH3 and HNO3 to condense together.
+  !
+  ! Threshold choice: genuine case2 aerosols (XT slightly below 2, small excess H2SO4)
+  ! give mc_H > 0.05 mol/kg; all observed mc_H < 1e-3 cases had sfc_NH3 > 300 nmol/m3
+  ! far exceeding gas-phase NH3 (~500-1500 nmol/m3 in the problematic columns).
+  ! 1e-2 mol/kg provides a safe margin between those two regimes.
+  !
+  ! This is a modification from the original E3SM/CAM5 MOSAIC code; it has no effect
+  ! when aerosol NO3 is small relative to SO4 (the original design envelope of MOSAIC).
+
 ! if(XT.lt.1.9999 .and. XT.ge.0.)then  ! RAZ 11/10/2014
-  if(XT.lt.2.0 .and. XT.ge.0.)then  ! RAZ 11/10/2014
+  ! (AMICDIAG_FW removed — too verbose for GC; use AMICDIAG_TARGET in case3 instead)
+  if(XT.lt.2.0 .and. XT.ge.0. .and. mc(jc_h,ibin).gt.1.e-2_r8)then  ! RAZ 11/10/2014
+     ! mc_H guard: only use case2 when H+ is genuinely elevated (> 10 mmol/kg).
+     ! See comment block above for rationale.
      call ASTEM_flux_wet_case2(ibin,ieqblm_ASTEM,sfc_a,df_gas_l,Heff,            &
           phi_volatile_l,integrate,gas,kel,mc,water_a,ma,gam,gam_ratio,Keq_ll,   &
           Keq_gl)
@@ -1556,6 +1636,7 @@ subroutine ASTEM_flux_wet_case2(ibin,ieqblm_ASTEM,sfc_a,df_gas_l,Heff,          
   endif
   
   
+  ! (AMICDIAG_CASE2 removed — too verbose for GC)
   return
 end subroutine ASTEM_flux_wet_case2
 
@@ -1570,7 +1651,7 @@ subroutine ASTEM_flux_wet_case3(ibin,ieqblm_ASTEM,sfc_a,df_gas_l,Heff,          
 
   use module_data_mosaic_aero, only: nbin_a_max, ngas_aerchtot, ngas_volatile,     &
        Ncation,mYES, jliquid,mNO,Nanion,nelectrolyte,nrxn_aer_gl,nrxn_aer_ll,naer, &
-       inh3_g,ihcl_g,ihno3_g,ja_no3,jhno3,jc_h,ja_cl,jhcl,jc_nh4
+       inh3_g,ihcl_g,ihno3_g,ja_no3,jhno3,jc_h,ja_cl,jhcl,jc_nh4,jnh4no3
 
   use module_mosaic_ext, only: quadratic,equilibrate_acids
   
@@ -1660,9 +1741,9 @@ subroutine ASTEM_flux_wet_case3(ibin,ieqblm_ASTEM,sfc_a,df_gas_l,Heff,          
   else
      phi_volatile_l(inh3_g,ibin) = 0.0
   endif
-  
-  
-  
+
+
+
   !      if(phi_volatile_l(ihno3_g,ibin) .le. rtol_eqb_astem .and.
   !     &   phi_volatile_l(ihcl_g,ibin)  .le. rtol_eqb_astem .and.
   !     &   phi_volatile_l(inh3_g,ibin)  .le. rtol_eqb_astem)then

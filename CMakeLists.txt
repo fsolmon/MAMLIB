@@ -36,3 +36,8 @@ target_link_libraries(MAM
 	PUBLIC GeosUtil
 )
 
+# modal_aero_calcsize_sub body is guarded by #ifdef MODAL_AERO (CESM convention).
+# The build uses MODAL_AERO_4MODE_MOM but calcsize still needs MODAL_AERO defined
+# so that dgncur_a is actually computed from number/volume each timestep.
+target_compile_definitions(MAM PRIVATE MODAL_AERO)
+
