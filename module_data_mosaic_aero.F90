@@ -112,6 +112,9 @@ module module_data_mosaic_aero
      real(r8) :: niter_mesa
      real(r8), dimension(5,4) :: xnerr_astem_negative
      integer, dimension(:), allocatable :: iter_mesa
+!++DBG
+     integer :: ldbg   ! 1 = target box diagnostic printing enabled
+!--DBG
   end type mosaic_vars_aa_type
 
   
@@ -164,7 +167,7 @@ module module_data_mosaic_aero
   !    MOSAIC box model runs that emulate CAM5 behavior (e.g. for debugging etc.) - 
   !       their values should match those in the CAM5 run (usually 1)
   integer, save :: use_cam5mam_soa_params  = 0   ! if >0, use cam5-mam soa/soag parameter values
-  integer, save :: use_cam5mam_accom_coefs = 0   ! if >0, use cam5-mam accomodation coefficient values
+  integer, save :: use_cam5mam_accom_coefs = 1   ! if >0, use cam5-mam accomodation coefficient values / FAB turned on
 
   integer, save :: 	&
        !it_mosaic,			   &  ! time-step index
