@@ -17,7 +17,8 @@ use rad_constituents, only: rad_cnst_get_info, rad_cnst_get_aer_mmr, rad_cnst_ge
 
 use constituents,     only: pcnst, cnst_name
 
-#ifdef MODAL_AERO
+! GC-MAM: replaced #ifdef MODAL_AERO with GC convention (MODAL_AERO is not defined in GC builds)
+#if ( defined MODAL_AERO_4MODE || defined MODAL_AERO_4MODE_MOM)
 
 ! these are the variables needed for the diagnostic calculation of dry radius
 use modal_aero_data, only: ntot_amode, nspec_amode, &
@@ -50,7 +51,8 @@ logical :: do_aitacc_transfer_default
 integer :: dgnum_idx = -1
 
 integer, parameter, public :: maxpair_csizxf = 1
-#ifdef MODAL_AERO
+! GC-MAM: replaced #ifdef MODAL_AERO with GC convention
+#if ( defined MODAL_AERO_4MODE || defined MODAL_AERO_4MODE_MOM)
 integer, parameter, public :: maxspec_csizxf = ntot_aspectype
 #else
 ! TODO: this is a kludge.  This value should probably be assigned
@@ -134,7 +136,8 @@ subroutine modal_aero_calcsize_init( pbuf2d, species_class)
    modefrm_csizxf(1) = 0
    modetoo_csizxf(1) = 0
 
-#ifndef MODAL_AERO
+! GC-MAM: replaced #ifndef MODAL_AERO with GC convention
+#if !( defined MODAL_AERO_4MODE || defined MODAL_AERO_4MODE_MOM)
    do_adjust_default          = .false.
    do_aitacc_transfer_default = .false.
 
@@ -492,7 +495,8 @@ subroutine modal_aero_calcsize_sub(state, ptend, deltat, pbuf, do_adjust_in, &
    logical, optional :: do_adjust_in
    logical, optional :: do_aitacc_transfer_in
 
-#ifdef MODAL_AERO
+! GC-MAM: replaced #ifdef MODAL_AERO with GC convention — this guard was silently disabling the entire calcsize body
+#if ( defined MODAL_AERO_4MODE || defined MODAL_AERO_4MODE_MOM)
 
    ! local
 
@@ -871,6 +875,9 @@ subroutine modal_aero_calcsize_sub(state, ptend, deltat, pbuf, do_adjust_in, &
             !
             ! now compute current dgn and v2n
             !
+            if (k==1 .and. n==1 .and. i<=3) &
+               write(6,'(a,3i4,3es12.4)') 'CALCSIZE_DBG i/k/n drv_a num_a dgncur=', &
+                  i,k,n, drv_a, num_a, dgncur_a(i,k,n)
             if (drv_a > 0.0_r8) then
                if (num_a <= drv_a*v2nxx) then
                   dgncur_a(i,k,n) = dgnxx

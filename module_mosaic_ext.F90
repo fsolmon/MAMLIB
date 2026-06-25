@@ -3405,14 +3405,14 @@ contains
   ! author: Rahul A. Zaveri
   ! update: jan 2005
   !-----------------------------------------------------------------------
-  subroutine aerosolmtc( jaerosolstate, num_a, Dp_wet_a, sigmag_a, P_atm, T_K, aH2O, aer, kg )
+  subroutine aerosolmtc( jaerosolstate, num_a, Dp_wet_a, sigmag_a, P_atm, T_K, aH2O, aer, mw_aer_mac, kg )
     
     use module_data_mosaic_aero,  only: nbin_a_max, nbin_a, naer, naercomp,             &!Parameters
          ngas_aerchtot, ngas_volatile, nelectrolyte, ngas_ioa,                              &
          mMODAL, no_aerosol, mUNSTRUCTURED, mSECTIONAL, mSIZE_FRAMEWORK,                    &!Input
          isoa_first, mw_gas, v_molar_gas,                                                   &!TBD
          i_gas2bin_uptk_flag, m_gas2bin_uptk_flag,                                          &
-         use_cam5mam_accom_coefs, ihno3_g, ica_a, jtotal, ihcl_g			! RAZ:6/14/2017
+         use_cam5mam_accom_coefs, ih2so4_g, ihno3_g, inh3_g, ica_a, ioin_a, jtotal, ihcl_g	! RAZ:6/14/2017
 
     use module_mosaic_support, only: mosaic_err_mess
 
@@ -3427,6 +3427,9 @@ contains
     real(r8), intent(inout), dimension(nbin_a_max) :: Dp_wet_a
     real(r8), intent(inout), dimension(ngas_aerchtot,nbin_a_max) :: kg
     real(r8), intent(inout), dimension(naer,3,nbin_a_max) :: aer		! RAZ: 6/14/2017
+!FAB
+    real(r8), intent(in), dimension(naer) :: mw_aer_mac                  ! needed for mass-based dust fraction
+!FAB
 
     ! local variables
     integer nghq
@@ -3440,6 +3443,9 @@ contains
     real(r8) :: accom(ngas_aerchtot)                             ! keep local
     real(r8) :: freepath(ngas_aerchtot)                          ! keep local
     real(r8) :: Dg(ngas_aerchtot)                                ! keep local
+!FAB
+    real(r8) :: f_dust, dust_mass, aer_tot_mass, accom_dust       ! sub-bin dust fraction accom blending
+!FAB
     !real(r8) :: fuchs_sutugin                                   ! mosaic func
     !real(r8) :: gas_diffusivity                                 ! mosaic func
     !real(r8) :: mean_molecular_speed                            ! mosaic func
@@ -3461,6 +3467,15 @@ contains
 !   accom(iapi2_g)   = tmpa
 !   accom(ilim1_g)   = tmpa
 !   accom(ilim2_g)   = tmpa
+!FAB ++MW  per-species refinement on top of cam5 baseline (Adams & Seinfeld 2002 + Davidovits et al.)
+    if ( use_cam5mam_accom_coefs > 0 ) then
+        accom(ih2so4_g) = 0.650_r8
+        accom(ihno3_g)  = 0.193_r8
+        accom(ihcl_g)   = 0.193_r8
+        accom(inh3_g)   = 0.092_r8
+        tmpa = accom(ihno3_g)  ! non-dust HNO3/HCl base for per-bin dust blending
+    end if
+!FAB --MW
 
 
 
@@ -3517,19 +3532,37 @@ contains
                exp(beta*lnDpgn + 0.5*(beta*lnsg)**2)
 
 ! RH-dependent accommodation coefficient for HNO3 on dust particles (Li et al. ACP, 12, 7591-7607, 2012).
-	    if(aer(ica_a,jtotal,ibin) .gt. 0.)then ! dust particles
-    	      if(aH2O .lt. 0.8)then
-                accom(ihno3_g)   = (0.0018*aH2O)/((1.0-aH2O)*(1.0 + 7.0*aH2O))
-                accom(ihno3_g)   = max( accom(ihno3_g), 1.8e-5_r8 )  ! avoid accom = 0 which causes problems
-	            accom(ihcl_g)    = accom(ihno3_g)
-              else
-                accom(ihno3_g)   = 0.0011 ! max value capped at 0.0011
-	        accom(ihcl_g)    = 0.0011
-              endif
-            else	! non-dust particles
-              accom(ihno3_g) = tmpa
-	      accom(ihcl_g)  = tmpa
-            endif
+!!FAB original binary test commented out - triggered by numerical-noise Ca in non-dust modes
+!	    if(aer(ica_a,jtotal,ibin) .gt. 0.)then ! dust particles
+!    	      if(aH2O .lt. 0.8)then
+!                accom(ihno3_g)   = (0.0018*aH2O)/((1.0-aH2O)*(1.0 + 7.0*aH2O))
+!                accom(ihno3_g)   = max( accom(ihno3_g), 1.8e-5_r8 )  ! avoid accom = 0 which causes problems
+!	            accom(ihcl_g)    = accom(ihno3_g)
+!              else
+!                accom(ihno3_g)   = 0.0011 ! max value capped at 0.0011
+!	        accom(ihcl_g)    = 0.0011
+!              endif
+!            else	! non-dust particles
+!              accom(ihno3_g) = tmpa
+!	      accom(ihcl_g)  = tmpa
+!            endif
+!FAB  mass-based dust fraction from OIN tracer (Wu et al. 2022 sub-bin condensation not coded here)
+!FAB  OIN (ioin_a) is the MAM dust tracer; mass fraction avoids Ca-proxy and molar ratio assumption.
+!FAB  Continuous blending avoids binary switch triggered by numerical-noise Ca in non-dust modes.
+          dust_mass    = max( aer(ioin_a,jtotal,ibin), 0.0_r8 ) * mw_aer_mac(ioin_a)
+          aer_tot_mass = max( sum( aer(1:naer,jtotal,ibin) * mw_aer_mac(1:naer) ), 1.e-20_r8 )
+          f_dust       = min( dust_mass / aer_tot_mass, 1.0_r8 )
+          if(aH2O .lt. 0.8)then
+             accom_dust = (0.0018*aH2O)/((1.0-aH2O)*(1.0 + 7.0*aH2O))
+             accom_dust = max( accom_dust, 1.8e-5_r8 )
+          else
+             accom_dust = 0.0011
+          endif
+
+          accom(ihno3_g) = f_dust * accom_dust + (1.0_r8 - f_dust) * tmpa
+          print*, 'FAB accom mw_oin=', mw_aer_mac(ioin_a), 'f_dust=', f_dust, 'accom_hno3=', accom(ihno3_g)
+          accom(ihcl_g)  = accom(ihno3_g)
+!FAB
 
           do 20 iv = 1, ngas_aerchtot
 

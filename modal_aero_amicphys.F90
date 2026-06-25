@@ -64,8 +64,8 @@
   integer, public :: cldy_rh_sameas_clear = 0
 ! this is only used for some specific box model tests
 #endif
-
-  integer, public :: mdo_gaexch_cldy_subarea = 0
+!FAB turn to 1 
+  integer, public :: mdo_gaexch_cldy_subarea = 1
 ! controls if gas condensation is done in cloudy subarea
 !    1 = yes ; 0 = no
 
@@ -283,7 +283,8 @@ subroutine modal_aero_amicphys_intr(                             &
                         dgncur_a,           dgncur_awet,         &
                         wetdens_host,                            &
                         qaerwat,                                 &
-                        pH_aer_out                               ) ! FAB
+                        hplus_aer_out,                           & ! FAB
+                        relhum_in                                ) ! FAB: optional grid-cell mean RH
 
 
 ! !USES:
@@ -351,8 +352,10 @@ implicit none
    real(r8), intent(inout), optional :: &
                               qaerwat(pcols,pver,ntot_amode)
                                  ! aerosol water mixing ratio (kg/kg, NOT mol/mol)
-   real(r8), intent(inout), optional :: &                              ! FAB
-              pH_aer_out(pcols,pver,ntot_amode)                        ! FAB: aerosol pH per mode [-3,14]
+   real(r8), intent(inout), optional :: &
+              hplus_aer_out(pcols,pver,ntot_amode)                     ! aerosol H+ concentration per mode [mol/L]
+   real(r8), intent(in),    optional :: &
+              relhum_in(pcols,pver)                                     ! FAB: grid-cell mean RH [0-1] from State_Met%RH/100
 
 ! !DESCRIPTION: 
 ! calculates changes to gas and aerosol TMRs (tracer mixing ratios) from
@@ -415,11 +418,12 @@ implicit none
 
       real(r8) :: afracsub(maxsubarea)
       real(r8) :: dgn_a(max_mode), dgn_awet(max_mode)
-      real(r8) :: ev_sat(pcols,pver)
+!FAB: ev_sat/qv_sat removed — relhumgcm now taken from relhum_in (State_Met%RH/100)
+!      real(r8) :: ev_sat(pcols,pver)
       real(r8) :: fclea, fcldy, fcldybb
       real(r8) :: nufine_3dtend_nnuc(pcols,pver)
       real(r8) :: ncluster_3dtend_nnuc(pcols,pver)
-      real(r8) :: qv_sat(pcols,pver)
+!      real(r8) :: qv_sat(pcols,pver)
       real(r8) :: relhumgcm, relhumsub(maxsubarea)
       real(r8) :: soag_3dtend_cond(pcols,pver,nsoa)
       real(r8) :: tmpa, tmpb, tmpc
@@ -552,9 +556,9 @@ implicit none
          do_q_coltendaa(:,iqtend_coag) = .false.
       end if
 
-! get saturation mixing ratio
-      call qsat( t(1:ncol,1:pver), pmid(1:ncol,1:pver), &
-                 ev_sat(1:ncol,1:pver), qv_sat(1:ncol,1:pver) )
+!FAB: qsat call removed — relhumgcm comes from relhum_in (State_Met%RH/100), same as ISORROPIA
+!      call qsat( t(1:ncol,1:pver), pmid(1:ncol,1:pver), &
+!                 ev_sat(1:ncol,1:pver), qv_sat(1:ncol,1:pver) )
 main_k_loop: &
       do k = top_lev, pver
 main_i_loop: &
@@ -587,15 +591,16 @@ main_i_loop: &
       end if
       fclea = 1.0_r8 - fcldy
       fcldybb = max( cld(i,k), 1.0e-6_r8 )
-
+      
       iscldy_subarea(:) = .false.
       if (jcldy > 0) iscldy_subarea(jcldy) = .true.
-
       afracsub(:) = 0.0_r8
       if (jclea > 0) afracsub(jclea) = fclea
       if (jcldy > 0) afracsub(jcldy) = fcldy
 
-      relhumgcm = max( 0.0_r8, min( 1.0_r8, qv(i,k)/qv_sat(i,k) ) )
+!FAB: use State_Met%RH/100 directly (same input as ISORROPIA), saves qsat computation
+!      relhumgcm = max( 0.0_r8, min( 1.0_r8, qv(i,k)/qv_sat(i,k) ) )
+      relhumgcm = max( 0.0_r8, min( 1.0_r8, relhum_in(i,k) ) )
       if (ncldy_subarea <= 0) then
          relhumsub(:) = relhumgcm
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
@@ -605,8 +610,10 @@ main_i_loop: &
       else
          relhumsub(jcldy) = 1.0_r8
          if (jclea > 0) then
-            tmpa = (relhumgcm - afracsub(jcldy))/afracsub(jclea)
-            relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
+!FAB: clear-sky RH formula suppresses NH4NO3 by ~10x vs ISORROPIA; use mean RH instead
+!            tmpa = (relhumgcm - afracsub(jcldy))/afracsub(jclea)
+!            relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
+            relhumsub(jclea) = relhumgcm
          end if
       end if
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
@@ -632,6 +639,67 @@ main_i_loop: &
       qaerwatgcm3(:) = 0.0_r8
       if ( present( qaerwat ) ) then
          qaerwatgcm3(1:ntot_amode) = max( 0.0_r8, qaerwat(i,k,1:ntot_amode) )
+      end if
+
+      ! AMICDIAG: dump all key intent(in) inputs for target column (latndx==1) at surface (k==1)
+      if ( k==1 .and. latndx(i)==1 ) then
+         write(iulog,'(/a,3i6)')    'AMICDIAG nstep/i/k         =', nstep, i, k
+         write(iulog,'(a,i4)')      'AMICDIAG ncol              =', ncol
+         write(iulog,'(a,es14.6)')  'AMICDIAG deltat(s)         =', deltat
+         write(iulog,'(a,4i4)')     'AMICDIAG mdo g/rn/nn/cg    =', mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag
+         write(iulog,'(a,es14.6)')  'AMICDIAG t(K)              =', t(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG pmid(Pa)          =', pmid(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG pdel(Pa)          =', pdel(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG zm(m)             =', zm(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG pblh(m)           =', pblh(i)
+         write(iulog,'(a,es14.6)')  'AMICDIAG qv(kg/kg)         =', qv(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG cld(-)            =', cld(i,k)
+         write(iulog,'(a,es14.6)')  'AMICDIAG relhumgcm         =', relhumgcm
+         write(iulog,'(a,l1)')      'AMICDIAG relhum_in present =', present(relhum_in)
+         write(iulog,'(a,4es14.6)') 'AMICDIAG dgncur_a(m)       =', dgncur_a(i,k,1:ntot_amode)
+         write(iulog,'(a,4es14.6)') 'AMICDIAG dgncur_awet(m)    =', dgncur_awet(i,k,1:ntot_amode)
+         write(iulog,'(a,4es14.6)') 'AMICDIAG wetdens(kg/m3)    =', wetdens_host(i,k,1:ntot_amode)
+         write(iulog,'(a,4es14.6)') 'AMICDIAG qaerwat(kg/kg)    =', qaerwatgcm3(1:ntot_amode)
+         if (igas_hno3 > 0) write(iulog,'(a,es14.6)') &
+            'AMICDIAG q_hno3(mol/mol)   =', qgcm3(lmap_gas(igas_hno3))
+         if (igas_nh3  > 0) write(iulog,'(a,es14.6)') &
+            'AMICDIAG q_nh3(mol/mol)    =', qgcm3(lmap_gas(igas_nh3))
+         write(iulog,'(a,es14.6)') &
+            'AMICDIAG q_h2so4(mol/mol)  =', qgcm3(lmap_gas(igas_h2so4))
+         if (lmap_aer(iaer_so4,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_so4_a1(mol/mol) =', qgcm3(lmap_aer(iaer_so4,1))
+         if (iaer_nh4 > 0 .and. lmap_aer(iaer_nh4,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_nh4_a1(mol/mol) =', qgcm3(lmap_aer(iaer_nh4,1))
+         if (iaer_no3 > 0 .and. lmap_aer(iaer_no3,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_no3_a1(mol/mol) =', qgcm3(lmap_aer(iaer_no3,1))
+         if (lmap_num(1) > 0) write(iulog,'(a,es14.6)') &
+            'AMICDIAG q_num_a1(#/kmol)  =', qgcm3(lmap_num(1))
+         ! --- extra aerosol species mode 1 (affect MOSAIC ion balance) ---
+         if (iaer_ncl > 0 .and. lmap_aer(iaer_ncl,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_ncl_a1(mol/mol) =', qgcm3(lmap_aer(iaer_ncl,1))
+         if (iaer_cl  > 0 .and. lmap_aer(iaer_cl ,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_cl_a1 (mol/mol) =', qgcm3(lmap_aer(iaer_cl ,1))
+         if (iaer_ca  > 0 .and. lmap_aer(iaer_ca ,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_ca_a1 (mol/mol) =', qgcm3(lmap_aer(iaer_ca ,1))
+         if (iaer_co3 > 0 .and. lmap_aer(iaer_co3,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_co3_a1(mol/mol) =', qgcm3(lmap_aer(iaer_co3,1))
+         if (iaer_dst > 0 .and. lmap_aer(iaer_dst,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_dst_a1(mol/mol) =', qgcm3(lmap_aer(iaer_dst,1))
+         if (iaer_pom > 0 .and. lmap_aer(iaer_pom,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_pom_a1(mol/mol) =', qgcm3(lmap_aer(iaer_pom,1))
+         if (iaer_soa > 0 .and. lmap_aer(iaer_soa,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG q_soa_a1(mol/mol) =', qgcm3(lmap_aer(iaer_soa,1))
+         if (igas_hcl > 0) write(iulog,'(a,es14.6)') &
+            'AMICDIAG q_hcl(mol/mol)    =', qgcm3(lmap_gas(igas_hcl))
+         ! --- cloud-borne (qqcw) key species mode 1 ---
+         if (iaer_no3 > 0 .and. lmap_aer(iaer_no3,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG qqcw_no3_a1       =', qqcwgcm3(lmap_aer(iaer_no3,1))
+         if (iaer_nh4 > 0 .and. lmap_aer(iaer_nh4,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG qqcw_nh4_a1       =', qqcwgcm3(lmap_aer(iaer_nh4,1))
+         if (lmap_aer(iaer_so4,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG qqcw_so4_a1       =', qqcwgcm3(lmap_aer(iaer_so4,1))
+         if (iaer_ncl > 0 .and. lmap_aer(iaer_ncl,1) > 0) &
+            write(iulog,'(a,es14.6)') 'AMICDIAG qqcw_ncl_a1       =', qqcwgcm3(lmap_aer(iaer_ncl,1))
       end if
 
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
@@ -1102,7 +1170,7 @@ main_i_loop: &
            awater_valid(i,k,n) = 0.0_r8
          end if
      end do
-     if (present(pH_aer_out)) pH_aer_out(i,k,:) = pH_valid(i,k,:) ! FAB
+     if (present(hplus_aer_out)) hplus_aer_out(i,k,:) = hplus_valid(i,k,:)
 #endif
 
       end do main_i_loop
@@ -1840,12 +1908,13 @@ do_cond_if_block10: &
       qaer_sv1 = qaer_cur
 
 #if ( defined MOSAIC_SPECIES )
-    if ( mosaic ) then
+    if ( mosaic ) then       
          tmp_relhum = min( relhum, 0.98_r8 )
          call mosaic_gasaerexch_1subarea_intr(     nstep,                &!Intent(ins)
               lchnk,             i,                k,           jsub,    &
               temp,              tmp_relhum,       pmid,                 &
               aircon,            dtsubstep,        n_mode,               &
+              latndx,                                                     &
               dgn_a,             dgn_awet,         qaer_cur,             &!Intent(inouts)
               qgas_cur,          qnum_cur,         qwtr_cur,             &
               qgas_avg,          qgas_netprod_otrproc,                   &
@@ -2279,10 +2348,11 @@ do_cond_if_block10: &
 
 #if ( defined MOSAIC_SPECIES )
       if ( mosaic ) then
-         call mosaic_gasaerexch_1subarea_intr(     nstep,                &!Intent(ins)
+              call mosaic_gasaerexch_1subarea_intr(     nstep,                &!Intent(ins)
               lchnk,             i,                k,           jsub,    &
               temp,              relhum,           pmid,                 &
               aircon,            dtsubstep,        n_mode,               &
+              latndx,                                                     &
               dgn_a,             dgn_awet,         qaer_cur,             &!Intent(inouts)
               qgas_cur,          qnum_cur,         qwtr_cur,             &
               qgas_avg,          qgas_netprod_otrproc,                   &
@@ -2507,6 +2577,7 @@ do_newnuc_if_block50: &
               lchnk,             i_in,             k_in,        jsub_in, &
               temp,              relhum,           pmid,                 &
               aircon,            dtsubstep,        n_mode,               &
+              latndx_i,                                                   &
               dgn_a,             dgn_awet,         qaer_cur,             &!Intent(inouts)
               qgas_cur,          qnum_cur,         qwtr_cur,             &
               qgas_avg,          qgas_netprod_otrproc,                   &
@@ -2533,8 +2604,8 @@ do_newnuc_if_block50: &
         !Use statements
         use module_mosaic_box_aerchem, only: mosaic_box_aerchemistry
 ! ++MW
-        use mam_utils, only: nan
-!FAB   
+        use mam_utils, only: nan, iulog
+!FAB
 ! --MW
         use physconst,                 only: mwh2o
         use module_data_mosaic_aero,   only: naer_mosaic => naer, &
@@ -2563,6 +2634,7 @@ do_newnuc_if_block50: &
         real(r8), intent(in) :: aircon           !Air molar density (kmol/m3)
         real(r8), intent(in) :: dtsubstep        !Time sub-step (s)
         integer,  intent(in) :: n_mode           !current number of active modes
+        integer,  intent(in) :: latndx_i         !latitude index for this column (for diagnostics)
 
         !Args: intent(inout)
         real(r8), intent(inout) :: dgn_a(max_mode)            !Dry geo. mean dia. (m) of number distrib.
@@ -2715,7 +2787,11 @@ do_newnuc_if_block50: &
 
         !Flags to control Mosaic model
         mcall_load_mosaic_parameters = 1    !**BALLI.. This flag is not used anymore
-        mcall_print_aer_in           = 0    !**BALLI...insert a dummy call to print_aer
+        if (k_in == 1 .and. latndx_i == 1) then
+           mcall_print_aer_in = 1
+        else
+           mcall_print_aer_in = 0
+        end if
         
         
         !Populate aersols
@@ -2792,8 +2868,20 @@ do_newnuc_if_block50: &
         if (igas_hno3 > 0) &
              gas(ihno3_g)   = qgas_cur(igas_hno3)   * nano_mult_cair 
         if (igas_hcl > 0) &
-             gas(ihcl_g)   = qgas_cur(igas_hcl)   * nano_mult_cair 
-        
+             gas(ihcl_g)   = qgas_cur(igas_hcl)   * nano_mult_cair
+
+        ! AMICDIAG_MOS: print MOSAIC unit inputs every step, surface, target column (latndx_i==1)
+        if (k_in == 1 .and. latndx_i == 1) then
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS cair_mol_m3(mol/m3)  =', cair_mol_m3
+           if (igas_hno3 > 0) write(iulog,'(a,es14.6)') &
+              'AMICDIAG_MOS gas_ihno3(nmol/m3)   =', gas(ihno3_g)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS gas_inh3(nmol/m3)    =', gas(inh3_g)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS aer_no3_a1(nmol/m3)  =', aer(ino3_a,jtotal,1)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS aer_nh4_a1(nmol/m3)  =', aer(inh4_a,jtotal,1)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS aer_so4_a1(nmol/m3)  =', aer(iso4_a,jtotal,1)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_MOS Hconc_sav(1)(mol/L)  =', Hconc_sav(1)
+        end if
+
         !Populate gas_netprod_otrproc
         gas_netprod_otrproc(:) = 0.0_r8
         gas_netprod_otrproc(ih2so4_g) = qgas_netprod_otrproc(igas_h2so4) * nano_mult_cair
@@ -2972,6 +3060,53 @@ do_newnuc_if_block50: &
 
 ! *** ff04a version ***
 ! ++MW
+         if (k_in == 1 .and. latndx_i == 1) then
+           ! --- intent(in) scalars ---
+           write(iulog,'(a,i6,a,1pe12.4)') 'MOSAIC_DBG PRE aH2O[-] step=',nstep,' =',aH2O
+           write(iulog,'(a,i6,a,1pe12.4)') 'MOSAIC_DBG PRE T_K[K] step=',nstep,' =',T_K
+           write(iulog,'(a,i6,a,1pe12.4)') 'MOSAIC_DBG PRE P_atm[atm] step=',nstep,' =',P_atm
+           write(iulog,'(a,i6,a,1pe12.4)') 'MOSAIC_DBG PRE RH_pc[%] step=',nstep,' =',RH_pc
+           write(iulog,'(a,i6,a,1pe12.4)') 'MOSAIC_DBG PRE dtchem[s] step=',nstep,' =',dtchem
+           ! --- intent(in) arrays ---
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG PRE sigmag_a[-] step=',nstep, &
+               ' m1234=',sigmag_a(1),sigmag_a(2),sigmag_a(3),sigmag_a(4)
+           write(iulog,'(a,i6,20(1pe12.4))') 'MOSAIC_DBG PRE kappa_nonelectro step=',nstep, &
+               kappa_nonelectro(1:naer_mosaic)
+           ! --- intent(inout): jaerosolstate, jhyst_leg ---
+           write(iulog,'(a,i6,a,4i12)') 'MOSAIC_DBG PRE jaerosolstate step=',nstep, &
+               ' m1234=',jaerosolstate(1),jaerosolstate(2),jaerosolstate(3),jaerosolstate(4)
+           write(iulog,'(a,i6,a,4i3)') 'MOSAIC_DBG PRE jhyst_leg step=',nstep, &
+               ' m1234=',jhyst_leg(1),jhyst_leg(2),jhyst_leg(3),jhyst_leg(4)
+           ! --- intent(inout): num_a, Dp_dry_a, dp_wet_a ---
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG PRE num_a[#/cm3] step=',nstep, &
+               ' m1234=',num_a(1),num_a(2),num_a(3),num_a(4)
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG PRE Dp_dry_a[cm] step=',nstep, &
+               ' m1234=',Dp_dry_a(1),Dp_dry_a(2),Dp_dry_a(3),Dp_dry_a(4)
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG PRE dp_wet_a[cm] step=',nstep, &
+               ' m1234=',dp_wet_a(1),dp_wet_a(2),dp_wet_a(3),dp_wet_a(4)
+           ! --- intent(inout): water_a, gas ---
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG PRE water_a[kg/m3] step=',nstep, &
+               ' m1234=',water_a(1),water_a(2),water_a(3),water_a(4)
+           write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAIC_DBG PRE gas_NH3_HNO3[nmol/m3] step=',nstep, &
+               ' =',gas(inh3_g),gas(ihno3_g)
+           write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAIC_DBG PRE gas_H2SO4_HCl[nmol/m3] step=',nstep, &
+               ' =',gas(ih2so4_g),gas(ihcl_g)
+           ! --- intent(inout): gas_avg, gas_netprod_otrproc (key inorganic species) ---
+           write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAIC_DBG PRE gas_avg_NH3_HNO3[nmol/m3] step=',nstep, &
+               ' =',gas_avg(inh3_g),gas_avg(ihno3_g)
+           write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAIC_DBG PRE gas_netprod_NH3_HNO3[nmol/m3] step=',nstep, &
+               ' =',gas_netprod_otrproc(inh3_g),gas_netprod_otrproc(ihno3_g)
+           ! --- intent(inout): aer NH4/NO3/SO4 all 4 modes ---
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG PRE aer1_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,1),aer(ino3_a,jtotal,1),aer(iso4_a,jtotal,1)
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG PRE aer2_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,2),aer(ino3_a,jtotal,2),aer(iso4_a,jtotal,2)
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG PRE aer3_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,3),aer(ino3_a,jtotal,3),aer(iso4_a,jtotal,3)
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG PRE aer4_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,4),aer(ino3_a,jtotal,4),aer(iso4_a,jtotal,4)
+        endif
+        Hconc_sav(:) = 0.0_r8  ! reset pH warm-start to avoid cross-k-level contamination (test)
         call mosaic_box_aerchemistry(               aH2O,               T_K,            &!Intent-ins
              P_atm,                   RH_pc,        dtchem,                             &
              mcall_load_mosaic_parameters,          mcall_print_aer_in, sigmag_a,       &
@@ -2984,6 +3119,28 @@ do_newnuc_if_block50: &
              mass_dry_a_bgn,          mass_dry_a,                                       &!Intent-outs
              dens_dry_a_bgn,          dens_dry_a,   water_a_hyst,       aH2O_a,         &
              uptkrate_h2so4,          gam_ratio,    jaerosolstate_bgn,  Hconc_sav       ) ! to save aerosol pH (dsj+zlu)
+        ! AMICDIAG_FAIL: print ASTEM convergence status for target column
+        if (k_in == 1 .and. latndx_i == 1) then
+           write(iulog,'(a,i4,3(a,i8))') 'AMICDIAG_FAIL nstep=', nstep, &
+              ' jASTEM_fail=', mosaic_vars_aa%jASTEM_fail, &
+              ' f_mos_fail=', mosaic_vars_aa%f_mos_fail, &
+              ' isteps_ASTEM=', mosaic_vars_aa%isteps_ASTEM
+           write(iulog,'(a,2es14.6)') 'AMICDIAG_FAIL gas_hno3/nh3_post(nmol)=', gas(ihno3_g), gas(inh3_g)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_FAIL aer_no3_a1_post(nmol)  =', aer(ino3_a,jtotal,1)
+           write(iulog,'(a,es14.6)') 'AMICDIAG_FAIL Hconc_sav_post(1)      =', Hconc_sav(1)
+        end if
+        if (k_in == 1 .and. latndx_i == 1) then
+           write(iulog,'(a,i6,a,4(i4))') 'MOSAIC_DBG POST jaerosolstate step=',nstep, &
+               ' m1234=',jaerosolstate(1),jaerosolstate(2),jaerosolstate(3),jaerosolstate(4)
+           write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAIC_DBG POST water_a[kg/m3] step=',nstep, &
+               ' m1234=',water_a(1),water_a(2),water_a(3),water_a(4)
+           write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAIC_DBG POST gas_NH3_HNO3[nmol/m3] step=',nstep, &
+               ' =',gas(inh3_g),gas(ihno3_g)
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG POST aer1_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,1),aer(ino3_a,jtotal,1),aer(iso4_a,jtotal,1)
+           write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAIC_DBG POST aer3_NH4_NO3_SO4[nmol/m3] step=',nstep, &
+               ' =',aer(inh4_a,jtotal,3),aer(ino3_a,jtotal,3),aer(iso4_a,jtotal,3)
+        endif
 ! --MW
 
 ! *** ff04a version ***

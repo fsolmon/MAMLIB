@@ -88,8 +88,12 @@ contains
          jsalt_index, jsulf_poor, jsulf_rich, rtol_mesa, dens_aer_mac,             &
          mw_aer_mac, zc, MW_c, za, MW_a, mw_comp_a, dens_comp_a, b_zsr,aw_min,     &
          mw_electrolyte, partial_molar_vol, a_zsr, d_mdrh, b_mtem, ref_index_a,    &
-         Nmax_mesa, nmax_ASTEM, mosaic_vars_aa_type,jc_h ! pH dsj+zlu
-         
+         Nmax_mesa, nmax_ASTEM, mosaic_vars_aa_type,jc_h, &! pH dsj+zlu
+!++DBG
+         ihno3_g, inh3_g, iso4_a, ino3_a, inh4_a, jtotal  ! species indices for diagnostics
+    use mam_utils, only: iulog                              ! for diagnostic output
+!--DBG
+
     implicit none
 
     !Intent-ins
@@ -191,6 +195,9 @@ contains
        mosaic_vars_aa%isteps_astem = 0
        mosaic_vars_aa%isteps_astem_max = 0
        mosaic_vars_aa%jastem_call = 0
+!++DBG
+       mosaic_vars_aa%ldbg = mcall_print_aer
+!--DBG
        mosaic_vars_aa%jmesa_call = 0
        mosaic_vars_aa%jmesa_fail = 0
        mosaic_vars_aa%niter_mesa_max = 0
@@ -203,6 +210,20 @@ contains
        call overall_massbal_in( aer, gas, gas_netprod_otrproc, dtchem,                  & !intent-ins
             total_species, tot_so4_in, tot_no3_in, tot_cl_in, tot_nh4_in, tot_na_in,    & !intent-outs
             tot_ca_in, tot_lim2_in )
+
+!++DBG mosaic_box PRE diagnostics
+       if (mcall_print_aer == 1) then
+          write(iulog,'(a,i6,a,1pe12.4)') 'MOSAICDBG PRE Kp_nh4no3[(nmol/m3)^2] it=',mosaic_vars_aa%it_mosaic,' =',Kp_nh4no3
+          write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAICDBG PRE tot_NH4_NO3_SO4[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',tot_nh4_in,tot_no3_in,tot_so4_in
+          write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAICDBG PRE gas_NH3_HNO3[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',gas(inh3_g),gas(ihno3_g)
+          write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAICDBG PRE aer1_NH4_NO3_SO4[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',aer(inh4_a,jtotal,1),aer(ino3_a,jtotal,1),aer(iso4_a,jtotal,1)
+          write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAICDBG PRE water_a[kg/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' m1234=',water_a(1),water_a(2),water_a(3),water_a(4)
+       end if
+!--DBG
 
        call MOSAIC_dynamic_solver(      mcall_print_aer,     dtchem,                    & !intent-ins
             aH2O,           T_K,        RH_pc,               P_atm,                     &
@@ -225,7 +246,22 @@ contains
        if (mosaic_vars_aa%f_mos_fail > 0) then
           return
        endif
-       
+
+!++DBG mosaic_box POST diagnostics
+       if (mcall_print_aer == 1) then
+          write(iulog,'(a,i6,a,2(1pe12.4))') 'MOSAICDBG POST gas_NH3_HNO3[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',gas(inh3_g),gas(ihno3_g)
+          write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAICDBG POST aer1_NH4_NO3_SO4[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',aer(inh4_a,jtotal,1),aer(ino3_a,jtotal,1),aer(iso4_a,jtotal,1)
+          write(iulog,'(a,i6,a,3(1pe12.4))') 'MOSAICDBG POST aer3_NH4_NO3_SO4[nmol/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',aer(inh4_a,jtotal,3),aer(ino3_a,jtotal,3),aer(iso4_a,jtotal,3)
+          write(iulog,'(a,i6,a,4(1pe12.4))') 'MOSAICDBG POST water_a[kg/m3] it=',mosaic_vars_aa%it_mosaic, &
+               ' m1234=',water_a(1),water_a(2),water_a(3),water_a(4)
+          write(iulog,'(a,i6,a,1pe12.4)') 'MOSAICDBG POST pH_mode1[H+_mol/L] it=',mosaic_vars_aa%it_mosaic, &
+               ' =',mc(jc_h,1)
+       end if
+!--DBG
+
        call overall_massbal_out( iprint_input, 0, mosaic_vars_aa%isteps_ASTEM, aer, gas, &
           tot_so4_in, tot_no3_in, tot_cl_in, tot_nh4_in, tot_na_in, tot_ca_in, tot_lim2_in, mosaic_vars_aa )
 

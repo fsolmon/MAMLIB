@@ -1618,15 +1618,12 @@ end do
        SUBROUTINE MAM_cold_start (physta,nstop,deltat,rhmin,rhmax,tmin,tmax)
 !
 !rewritten FAB
-        use physconst, only: pi, mwdry,r_universal 
-        use mam_utils, only: pcols,pver, endrun, & 
+        use physconst, only: mwdry, r_universal
+        use mam_utils, only: pcols,pver, endrun, &
                 l_h2so4g, l_soag, l_hno3g, l_so2g, l_hclg, l_nh3g, &
                 mdo_mambox, mdo_gaschem, mdo_cloudchem, mdo_coldstart, &
                 mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag
         use chem_mods, only : adv_mass,imozart
-        use modal_aero_amicphys, only :&
-                   dens_aer, iaer_bc, iaer_pom, iaer_so4, iaer_soa, iaer_ncl, &
-                   iaer_mom, iaer_dst, iaer_co3, iaer_nh4, iaer_no3, iaer_ca, iaer_cl 
         use wv_saturation, only: qsat, gestbl
         use modal_aero_data
         use physics_types, only : physics_state
@@ -1636,15 +1633,11 @@ end do
         real(r8), intent(out), optional :: deltat, rhmin,rhmax,tmin,tmax
 
 
-!local 
+!local
        real(r8) :: ev_sat(pcols,pver)
        real(r8) :: qv_sat(pcols,pver)
 
-        real(r8) :: tmpfso4, tmpfnh4, tmpfsoa, tmpfpom, &
-                    tmpfbc, tmpfncl, tmpfdst, tmpfmom
-        real(r8) :: tmpfno3, tmpfcl, tmpfca, tmpfco3, tmpfna
-
-        real(r8) :: tmpdens, tmpvol, tmpmass, sx
+        real(r8) :: tmpmass
 
 
         real(r8), pointer :: q(:,:,:), aircon(:,:), dgncur_a(:,:,:)
@@ -1658,7 +1651,7 @@ end do
 !
       integer  :: mam_dt, mam_nstep
       real(r8) :: temp, press, RH_CLEA,mtmin,mtmax,mrhmin,mrhmax
-      real(r8),  dimension(:), allocatable  :: numc, mfso4, mfpom, mfsoa, mfbc, & 
+      real(r8),  dimension(:), allocatable  :: numc, masstot, mfso4, mfpom, mfsoa, mfbc, &
                                     mfdst, mfncl, mfno3, mfnh4, mfco3, mfca, mfcl
       real(r8)  ::          qso2, qh2so4, qsoag,qhno3,qnh3,qhcl
 
@@ -1667,8 +1660,8 @@ end do
                             mdo_rename, mdo_newnuc, mdo_coag, mdo_coldstart
       namelist /met_input/ press, rh_clea, mrhmin, mrhmax, mtmin,mtmax
       namelist /chem_input/ qso2, qh2so4, qsoag, qhno3, qnh3, qhcl, &
-                          numc, mfso4, mfpom, mfsoa, mfbc, mfdst, & 
-                          mfncl, mfno3, mfnh4, mfco3, mfca, mfcl 
+                          numc, masstot, mfso4, mfpom, mfsoa, mfbc, mfdst, &
+                          mfncl, mfno3, mfnh4, mfco3, mfca, mfcl
 
 
 
@@ -1682,6 +1675,7 @@ end do
 
        
 allocate(numc(ntot_amode))
+allocate(masstot(ntot_amode))
 allocate(mfso4(ntot_amode))
 allocate(mfpom(ntot_amode))
 allocate(mfsoa(ntot_amode))
@@ -1738,77 +1732,54 @@ end if
    physta%cld(:,:)    = 0._r8
    physta%pdel(:,:)  = 100.e2_r8  !hpa ~ 1000m
    physta%pdeldry(:,:) = physta%pdel(:,:) 
-  end if 
+!!  end if 
 
 loffset = imozart -1
 ! initialize the gas mixing ratio
-if (l_so2g > 0) q(:,:,l_so2g)   = qso2/adv_mass(l_so2g - loffset)*mwdry*1E-9
-if (l_soag > 0) q(:,:,l_soag)   = qsoag/adv_mass(l_soag - loffset)*mwdry*1E-9
-if (l_h2so4g > 0)  q(:,:,l_h2so4g) = qh2so4/adv_mass(l_h2so4g - loffset)*mwdry*1E-9
-if (l_hno3g> 0) q(:,:,l_hno3g) =   qhno3/adv_mass(l_hno3g - loffset)*mwdry*1E-9
-if (l_nh3g > 0) q(:,:,l_nh3g) =   qnh3/adv_mass(l_nh3g - loffset)*mwdry*1E-9
-if (l_hclg > 0) q(:,:,l_hclg) =   qhcl/adv_mass(l_hclg - loffset)*mwdry*1E-9
+if (l_so2g > 0) q(:,:,l_so2g)   = qso2  *adv_mass(l_so2g   - loffset)/mwdry*1E-9
+if (l_soag > 0) q(:,:,l_soag)   = qsoag *adv_mass(l_soag   - loffset)/mwdry*1E-9
+if (l_h2so4g > 0)  q(:,:,l_h2so4g) = qh2so4*adv_mass(l_h2so4g - loffset)/mwdry*1E-9
+if (l_hno3g> 0) q(:,:,l_hno3g) =   qhno3 *adv_mass(l_hno3g  - loffset)/mwdry*1E-9
+if (l_nh3g > 0) q(:,:,l_nh3g)  =   qnh3  *adv_mass(l_nh3g   - loffset)/mwdry*1E-9
+if (l_hclg > 0) q(:,:,l_hclg)  =   qhcl  *adv_mass(l_hclg   - loffset)/mwdry*1E-9
 
+end if 
 
 ! initialize the aerosol/number mixing ratio for cold start.
-! adapted to mam4 box model for now , only on the first 10 levels  
-      do k = 1, pver 
+      do k = 1, pver
          do i = 1, pcols
-            do  n = 1, ntot_amode
+            do n = 1, ntot_amode
 
-                sx = log( sigmag_amode(n) )
-                   dgncur_a(i,k,n) = dgnum_amode(n)  
-                   !
-                   q(i,k,numptr_amode(n)) = numc(n) *1.E6/ aircon(i,k) / mwdry ! #.cm-3 converted to #.kg-1
-                   q(i,k,numptr_amode(n)) =  q(i,k,numptr_amode(n)) * aircon(i,k)/aircon(i,1) !vertical weights 
-                   ! this is to create a constant number mixing ratio( while concentration decrase with density)
-                                      
-                   if (lptr_so4_a_amode(n) > 0) tmpfso4 = mfso4(n)
-                   if (lptr_pom_a_amode(n) > 0) tmpfpom = mfpom(n)
-                   if (lptr_soa_a_amode(n) > 0) tmpfsoa = mfsoa(n)
-                   if (lptr_bc_a_amode(n) > 0)  tmpfbc  = mfbc(n)
-                   if (lptr_dust_a_amode(n) > 0) tmpfdst = mfdst(n)
-                   if (lptr_nacl_a_amode(n) > 0) tmpfncl = mfncl(n)
-                   if (lptr_no3_a_amode(n) > 0) tmpfno3 = mfno3(n)
-                   if (lptr_nh4_a_amode(n) > 0) tmpfnh4 = mfnh4(n)
-                   if (lptr_co3_a_amode(n) > 0) tmpfco3 = mfco3(n)
-                   if (lptr_ca_a_amode(n) > 0) tmpfca = mfca(n)
-                   if (lptr_cl_a_amode(n) > 0) tmpfcl = mfcl(n)
-                   tmpvol  = q(i,k,numptr_amode(n)) * &
-                          (dgncur_a(i,k,n)**3) * &
-                          (pi/6.0_r8) * exp(4.5_r8*sx*sx)
-                   tmpdens = ( (tmpfsoa / dens_aer(iaer_soa)) + &
-                               (tmpfso4 / dens_aer(iaer_so4)) + &
-                               (tmpfpom / dens_aer(iaer_pom)) + &
-                               (tmpfbc  / dens_aer(iaer_bc))  + &
-                               (tmpfdst / dens_aer(iaer_dst)) + &
-                               (tmpfncl / dens_aer(iaer_ncl)) + &
-#if(defined MOSAIC_SPECIES)
-                               (tmpfno3 / dens_aer(iaer_no3)) + &
-                               (tmpfnh4 / dens_aer(iaer_nh4)) + &
-                               (tmpfco3 / dens_aer(iaer_co3)) + & 
-                               (tmpfca  / dens_aer(iaer_ca))  + & 
-                               (tmpfcl  / dens_aer(iaer_cl))  + &
-#endif
-                               0._r8)**(-1._r8)
+               dgncur_a(i,k,n) = dgnum_amode(n)
 
-                    tmpmass = tmpvol*tmpdens   ! kg-dry-aerosol/kg-air
-                    if (lptr_so4_a_amode(n) > 0) q(i,k,lptr_so4_a_amode(n)) = tmpmass*tmpfso4
-                    if (lptr_pom_a_amode(n) > 0) q(i,k,lptr_pom_a_amode(n)) = tmpmass*tmpfpom
-                    if (lptr_soa_a_amode(n) > 0) q(i,k,lptr_soa_a_amode(n)) = tmpmass*tmpfsoa
-                    if (lptr_bc_a_amode(n)  > 0) q(i,k,lptr_bc_a_amode(n))  = tmpmass*tmpfbc
-                    if (lptr_dust_a_amode(n) > 0) q(i,k,lptr_dust_a_amode(n)) = tmpmass*tmpfdst
-                    if (lptr_nacl_a_amode(n) > 0) q(i,k,lptr_nacl_a_amode(n)) = tmpmass*tmpfncl
-                    if (lptr_no3_a_amode(n) > 0) q(i,k,lptr_no3_a_amode(n)) = tmpmass*tmpfno3
-                    if (lptr_nh4_a_amode(n) > 0) q(i,k,lptr_nh4_a_amode(n)) = tmpmass*tmpfnh4
-                    if (lptr_co3_a_amode(n) > 0) q(i,k,lptr_co3_a_amode(n)) = tmpmass*tmpfco3
-                    if (lptr_ca_a_amode(n) > 0) q(i,k,lptr_ca_a_amode(n)) = tmpmass*tmpfca
-                    if (lptr_cl_a_amode(n) > 0) q(i,k,lptr_cl_a_amode(n)) = tmpmass*tmpfcl
+               ! number: #/cm³ → #/kg-air  (aircon [kmol/m³] × mwdry [kg/kmol] = ρ_air [kg/m³])
+               q(i,k,numptr_amode(n)) = numc(n) * 1.e6_r8 / (aircon(i,k) * mwdry)
+               ! apply vertical weight so number mixing ratio is constant with height
+               q(i,k,numptr_amode(n)) = q(i,k,numptr_amode(n)) * aircon(i,k)/aircon(i,1)
+
+               ! mass: µg/m³ → kg/kg-air, constant mixing ratio with height
+               !FAB original divided by aircon(i,k) giving q increasing with height; use ref level like number
+               !tmpmass = masstot(n) * 1.e-9_r8 / (aircon(i,k) * mwdry)
+               tmpmass = masstot(n) * 1.e-9_r8 / (aircon(i,1) * mwdry) !FAB
+
+               if (lptr_so4_a_amode(n)  > 0) q(i,k,lptr_so4_a_amode(n))  = tmpmass * mfso4(n)
+               if (lptr_pom_a_amode(n)  > 0) q(i,k,lptr_pom_a_amode(n))  = tmpmass * mfpom(n)
+               if (lptr_soa_a_amode(n)  > 0) q(i,k,lptr_soa_a_amode(n))  = tmpmass * mfsoa(n)
+               if (lptr_bc_a_amode(n)   > 0) q(i,k,lptr_bc_a_amode(n))   = tmpmass * mfbc(n)
+               if (lptr_dust_a_amode(n) > 0) q(i,k,lptr_dust_a_amode(n)) = tmpmass * mfdst(n)
+               if (lptr_nacl_a_amode(n) > 0) q(i,k,lptr_nacl_a_amode(n)) = tmpmass * mfncl(n)
+               if (lptr_no3_a_amode(n)  > 0) q(i,k,lptr_no3_a_amode(n))  = tmpmass * mfno3(n)
+               if (lptr_nh4_a_amode(n)  > 0) q(i,k,lptr_nh4_a_amode(n))  = tmpmass * mfnh4(n)
+               if (lptr_co3_a_amode(n)  > 0) q(i,k,lptr_co3_a_amode(n))  = tmpmass * mfco3(n)
+               if (lptr_ca_a_amode(n)   > 0) q(i,k,lptr_ca_a_amode(n))   = tmpmass * mfca(n)
+               if (lptr_cl_a_amode(n)   > 0) q(i,k,lptr_cl_a_amode(n))   = tmpmass * mfcl(n)
+
             end do ! n
          end do ! i
-      end do ! k   
+      end do ! k
 
 deallocate(numc)
+deallocate(masstot)
 deallocate(mfso4)
 deallocate(mfpom)
 deallocate(mfsoa)
