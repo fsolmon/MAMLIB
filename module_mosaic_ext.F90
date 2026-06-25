@@ -3560,7 +3560,6 @@ contains
           endif
 
           accom(ihno3_g) = f_dust * accom_dust + (1.0_r8 - f_dust) * tmpa
-          print*, 'FAB accom mw_oin=', mw_aer_mac(ioin_a), 'f_dust=', f_dust, 'accom_hno3=', accom(ihno3_g)
           accom(ihcl_g)  = accom(ihno3_g)
 !FAB
 
