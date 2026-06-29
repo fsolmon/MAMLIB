@@ -1622,7 +1622,8 @@ end do
         use mam_utils, only: pcols,pver, endrun, &
                 l_h2so4g, l_soag, l_hno3g, l_so2g, l_hclg, l_nh3g, &
                 mdo_mambox, mdo_gaschem, mdo_cloudchem, mdo_coldstart, &
-                mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag
+                mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag, &
+                accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3  !FAB
         use chem_mods, only : adv_mass,imozart
         use wv_saturation, only: qsat, gestbl
         use modal_aero_data
@@ -1657,7 +1658,8 @@ end do
 
       namelist /time_input/ mam_dt, mam_nstep
       namelist /cntl_input/mdo_mambox, mdo_gaschem, mdo_cloudchem,  mdo_gasaerexch, &
-                            mdo_rename, mdo_newnuc, mdo_coag, mdo_coldstart
+                            mdo_rename, mdo_newnuc, mdo_coag, mdo_coldstart, &
+                            accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3  !FAB
       namelist /met_input/ press, rh_clea, mrhmin, mrhmax, mtmin,mtmax
       namelist /chem_input/ qso2, qh2so4, qsoag, qhno3, qnh3, qhcl, &
                           numc, masstot, mfso4, mfpom, mfsoa, mfbc, mfdst, &
