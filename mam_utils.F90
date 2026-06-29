@@ -29,6 +29,12 @@ MODULE MAM_UTILS
   integer :: mdo_mambox, mdo_gaschem, mdo_cloudchem, mdo_coldstart
   integer :: mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag
 
+  ! Mass accommodation coefficients — overridable from MAM_INIT (later from Input_Opt)
+  real(r8), save :: accom_coef_h2so4 = 0.650_r8
+  real(r8), save :: accom_coef_hno3  = 0.100_r8
+  real(r8), save :: accom_coef_hcl   = 0.100_r8
+  real(r8), save :: accom_coef_nh3   = 0.092_r8
+
   integer :: pcols 
   integer :: pver 
   integer, parameter :: psubcols = 1

@@ -84,7 +84,8 @@
 ! !USES:
    use modal_aero_data
    use mam_utils,      only: endrun, outfld, fieldname_len, pcols, pver, iam, masterproc, &
-                             top_lev => clim_modal_aero_top_lev
+                             top_lev => clim_modal_aero_top_lev, &
+                             accom_coef_h2so4  !FAB: prescribable accom coefficient
    use chem_mods,      only: adv_mass
    use constituents,   only: pcnst, cnst_name
    use physconst,      only: gravit, mwdry, r_universal
@@ -606,6 +607,7 @@ main_i:	do i = 1, ncol
                                   avogad => avogadro    ! Avogadro's number (1/kmol)
           use physconst,    only: mw_so4a => mwso4, &   ! Molecular weight of sulfate
                                   mw_nh4a => mwnh4      ! Molecular weight of ammonium
+          use mam_utils, only: accom_coef_h2so4  !FAB: prescribable accom coefficient
 !.......................................................................
 !
 ! calculates new particle production from homogeneous nucleation
@@ -708,7 +710,8 @@ main_i:	do i = 1, ncol
 
         real(r8), parameter :: onethird = 1.0_r8/3.0_r8
 
-        real(r8), parameter :: accom_coef_h2so4 = 0.65_r8   ! accomodation coef for h2so4 conden
+        !FAB: accom_coef_h2so4 now from mam_utils (default 0.65, overridable)
+        !real(r8), parameter :: accom_coef_h2so4 = 0.65_r8
 
 ! dry densities (kg/m3) molecular weights of aerosol 
 ! ammsulf, ammbisulf, and sulfacid (from mosaic  dens_electrolyte values)

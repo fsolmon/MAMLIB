@@ -3415,6 +3415,8 @@ contains
          use_cam5mam_accom_coefs, ih2so4_g, ihno3_g, inh3_g, ica_a, ioin_a, jtotal, ihcl_g	! RAZ:6/14/2017
 
     use module_mosaic_support, only: mosaic_err_mess
+    !FAB: accom coefficients from mam_utils (overridable at init time, later via Input_Opt)
+    use mam_utils, only: accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3
 
     implicit none
     
@@ -3434,7 +3436,7 @@ contains
     ! local variables
     integer nghq
     parameter (nghq = 2)         ! gauss-hermite quadrature order
-    integer ibin, iq, iv
+    integer ibin, iq, iv, n
     real(r8) :: tworootpi, root2, beta
     parameter (tworootpi = 3.5449077, root2 = 1.4142135, beta = 2.0)
     real(r8) :: cdum, Dp, Fkn, Kn, lnsg, lnDpgn, lnDp, speed,   &
@@ -3452,7 +3454,7 @@ contains
 
     ! mass accommodation coefficients
     tmpa = 0.1
-    if ( use_cam5mam_accom_coefs > 0 ) tmpa = 0.65
+   ! if ( use_cam5mam_accom_coefs > 0 ) tmpa = 0.65
     accom(1:ngas_aerchtot) = tmpa  ! default
 !   accom(ih2so4_g)  = tmpa
 !   accom(ihno3_g)   = tmpa
@@ -3468,17 +3470,15 @@ contains
 !   accom(ilim1_g)   = tmpa
 !   accom(ilim2_g)   = tmpa
 !FAB ++MW  per-species refinement on top of cam5 baseline (Adams & Seinfeld 2002 + Davidovits et al.)
-    if ( use_cam5mam_accom_coefs > 0 ) then
-        accom(ih2so4_g) = 0.650_r8
-        accom(ihno3_g)  = 0.193_r8
-        accom(ihcl_g)   = 0.193_r8
-        accom(inh3_g)   = 0.092_r8
+!
+if ( use_cam5mam_accom_coefs > 0 ) then
+        accom(ih2so4_g) = accom_coef_h2so4  !FAB: from mam_utils (defaults: 0.65)
+        accom(ihno3_g)  = accom_coef_hno3   !FAB: from mam_utils (defaults: 0.10)
+        accom(ihcl_g)   = accom_coef_hcl    !FAB: from mam_utils (defaults: 0.10)
+        accom(inh3_g)   = accom_coef_nh3    !FAB: from mam_utils (defaults: 0.092)
         tmpa = accom(ihno3_g)  ! non-dust HNO3/HCl base for per-bin dust blending
     end if
 !FAB --MW
-
-
-
 
     ! quadrature weights
     xghq(1) =  0.70710678
@@ -3513,7 +3513,6 @@ contains
     ! calc mass transfer coefficients for gases over various aerosol bins
 
     if (mSIZE_FRAMEWORK .eq. mMODAL) then
-
        ! for modal approach
        do 10 ibin = 1, nbin_a
 
@@ -3559,10 +3558,11 @@ contains
              accom_dust = 0.0011
           endif
 
-          accom(ihno3_g) = f_dust * accom_dust + (1.0_r8 - f_dust) * tmpa
-          accom(ihcl_g)  = accom(ihno3_g)
-!FAB
-
+!FAB  old alpha-blend (approximate, only exact in free-molecular limit):
+!FAB          accom(ihno3_g) = f_dust * accom_dust + (1.0_r8 - f_dust) * tmpa
+!FAB          accom(ihcl_g)  = accom(ihno3_g)
+!FAB  replaced by beta-blend inside quadrature loop (exact for all Kn regimes)
+ 
           do 20 iv = 1, ngas_aerchtot
 
              sumghq = 0.0_r8
@@ -3570,15 +3570,22 @@ contains
                 lnDp = lnDpgn + beta*lnsg**2 + root2*lnsg*xghq(iq)
                 Dp = exp(lnDp)
                 Kn = 2.*freepath(iv)/Dp
-                Fkn = fuchs_sutugin(Kn,accom(iv))
+!FAB  beta-blend for HNO3/HCl: exact dust/non-dust mixing at each Kn
+                if (iv == ihno3_g .or. iv == ihcl_g) then
+                   Fkn = f_dust * fuchs_sutugin(Kn, accom_dust) &
+                       + (1.0_r8 - f_dust) * fuchs_sutugin(Kn, tmpa)
+                else
+                   Fkn = fuchs_sutugin(Kn, accom(iv))
+                end if
+!FAB
                 sumghq = sumghq + wghq(iq)*Dp*Fkn/(Dp**beta)
 30              continue
 
                 kg(iv,ibin) = max( cdum*Dg(iv)*sumghq, 0.0_r8 )         ! 1/s
-
 20              continue
 10     continue
-                
+
+
     elseif ((mSIZE_FRAMEWORK .eq. mSECTIONAL   ) .or. &
          (mSIZE_FRAMEWORK .eq. mUNSTRUCTURED)) then
        
