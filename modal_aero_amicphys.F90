@@ -64,8 +64,8 @@
   integer, public :: cldy_rh_sameas_clear = 0
 ! this is only used for some specific box model tests
 #endif
-!FAB turn to 1 
-  integer, public :: mdo_gaexch_cldy_subarea = 1
+!FAB disabled: no condensation in cloudy sub-area
+  integer, public :: mdo_gaexch_cldy_subarea = 0
 ! controls if gas condensation is done in cloudy subarea
 !    1 = yes ; 0 = no
 
@@ -610,10 +610,8 @@ main_i_loop: &
       else
          relhumsub(jcldy) = 1.0_r8
          if (jclea > 0) then
-!FAB: clear-sky RH formula suppresses NH4NO3 by ~10x vs ISORROPIA; use mean RH instead
-!            tmpa = (relhumgcm - afracsub(jcldy))/afracsub(jclea)
-!            relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
-            relhumsub(jclea) = relhumgcm
+            tmpa = (relhumgcm - afracsub(jcldy))/afracsub(jclea)
+            relhumsub(jclea) = max( 0.0_r8, min( 1.0_r8, tmpa ) )
          end if
       end if
 #if ( defined( CAMBOX_ACTIVATE_THIS ) )
@@ -5266,7 +5264,8 @@ agepair_loop1: &
 !
 !-----------------------------------------------------------------------
 
-use mam_utils, only    :  fieldname_len, iulog, masterproc, get_spc_ndx, solsym
+use mam_utils, only    :  fieldname_len, iulog, masterproc, get_spc_ndx, solsym, &
+                          accom_coef_h2so4  !FAB: prescribable accom coefficient
 use chem_mods, only    :  adv_mass
 use constituents, only :  pcnst, cnst_get_ind, cnst_name
 use physconst, only    :  mwdry, mwh2o
@@ -5503,7 +5502,7 @@ dr_so4_monolayers_pcage = n_so4_monolayers_pcage * 4.76e-10
       fcvt_gas(:) = 1.0_r8
 
       vol_molar_gas = 42.88_r8  ! value for h2so4
-      accom_coef_gas = 0.65_r8  ! value for h2so4
+      accom_coef_gas = accom_coef_h2so4  !FAB: from mam_utils (default 0.65)
 
       do igas = 1, ngas
          call cnst_get_ind( name_gas(igas), l, .false. )
