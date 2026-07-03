@@ -1639,12 +1639,13 @@ end do
        real(r8) :: qv_sat(pcols,pver)
 
         real(r8) :: tmpmass
+        real(r8) :: drv_a_init
 
 
-        real(r8), pointer :: q(:,:,:), aircon(:,:), dgncur_a(:,:,:)
+        real(r8), pointer :: q(:,:,:), aircon(:,:), dgncur_a(:,:,:), dgncur_awet(:,:,:)
 
 
-        integer :: i,k,n,loffset
+        integer :: i,k,n,loffset,l1,la
 
 
         !
@@ -1652,7 +1653,7 @@ end do
 !
       integer  :: mam_dt, mam_nstep
       real(r8) :: temp, press, RH_CLEA,mtmin,mtmax,mrhmin,mrhmax
-      real(r8),  dimension(:), allocatable  :: numc, masstot, mfso4, mfpom, mfsoa, mfbc, &
+      real(r8),  dimension(:), allocatable  :: masstot, mfso4, mfpom, mfsoa, mfbc, &
                                     mfdst, mfncl, mfno3, mfnh4, mfco3, mfca, mfcl
       real(r8)  ::          qso2, qh2so4, qsoag,qhno3,qnh3,qhcl
 
@@ -1661,8 +1662,10 @@ end do
                             mdo_rename, mdo_newnuc, mdo_coag, mdo_coldstart, &
                             accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3  !FAB
       namelist /met_input/ press, rh_clea, mrhmin, mrhmax, mtmin,mtmax
+      ! number concentration is no longer a namelist input: it is derived at cold
+      ! start from masstot/mf* and the mode's default size distribution (see below)
       namelist /chem_input/ qso2, qh2so4, qsoag, qhno3, qnh3, qhcl, &
-                          numc, masstot, mfso4, mfpom, mfsoa, mfbc, mfdst, &
+                          masstot, mfso4, mfpom, mfsoa, mfbc, mfdst, &
                           mfncl, mfno3, mfnh4, mfco3, mfca, mfcl
 
 
@@ -1673,10 +1676,10 @@ end do
         ! which is not called but could be usefull
        q => physta%q
        dgncur_a => physta%dgncur_a
+       dgncur_awet => physta%dgncur_awet
        aircon => physta%aircon
 
        
-allocate(numc(ntot_amode))
 allocate(masstot(ntot_amode))
 allocate(mfso4(ntot_amode))
 allocate(mfpom(ntot_amode))
@@ -1748,16 +1751,14 @@ if (l_hclg > 0) q(:,:,l_hclg)  =   qhcl  *adv_mass(l_hclg   - loffset)/mwdry*1E-
 end if 
 
 ! initialize the aerosol/number mixing ratio for cold start.
+! number is DERIVED from mass + the mode's default size distribution
+! (dgnum_amode/voltonumb_amode); there is no separate number namelist input.
       do k = 1, pver
          do i = 1, pcols
             do n = 1, ntot_amode
 
-               dgncur_a(i,k,n) = dgnum_amode(n)
-
-               ! number: #/cm³ → #/kg-air  (aircon [kmol/m³] × mwdry [kg/kmol] = ρ_air [kg/m³])
-               q(i,k,numptr_amode(n)) = numc(n) * 1.e6_r8 / (aircon(i,k) * mwdry)
-               ! apply vertical weight so number mixing ratio is constant with height
-               q(i,k,numptr_amode(n)) = q(i,k,numptr_amode(n)) * aircon(i,k)/aircon(i,1)
+               dgncur_a(i,k,n)     = dgnum_amode(n)
+               dgncur_awet(i,k,n)  = dgnum_amode(n)  ! no water at cold start: wet = dry
 
                ! mass: µg/m³ → kg/kg-air, constant mixing ratio with height
                !FAB original divided by aircon(i,k) giving q increasing with height; use ref level like number
@@ -1776,11 +1777,22 @@ end if
                if (lptr_ca_a_amode(n)   > 0) q(i,k,lptr_ca_a_amode(n))   = tmpmass * mfca(n)
                if (lptr_cl_a_amode(n)   > 0) q(i,k,lptr_cl_a_amode(n))   = tmpmass * mfcl(n)
 
+               ! dry volume mixrat = sum_over_components{ component_mass_mixrat / density }
+               ! (same formula calcsize uses internally)
+               drv_a_init = 0.0_r8
+               do l1 = 1, nspec_amode(n)
+                  la = lmassptr_amode(l1,n)
+                  drv_a_init = drv_a_init &
+                     + max(0.0_r8,q(i,k,la)) / specdens_amode(lspectype_amode(l1,n))
+               end do
+
+               ! number: consistent with dry volume and the mode's default size (voltonumb_amode)
+               q(i,k,numptr_amode(n)) = drv_a_init * voltonumb_amode(n)
+
             end do ! n
          end do ! i
       end do ! k
 
-deallocate(numc)
 deallocate(masstot)
 deallocate(mfso4)
 deallocate(mfpom)

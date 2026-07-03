@@ -302,13 +302,15 @@ contains
          mw_electrolyte, partial_molar_vol,                                             &
          dens_aer_mac, mw_aer_mac, dens_comp_a, mw_comp_a, ref_index_a, MW_a, MW_c,     &
          density_max_allow, density_min_allow,                                          &
-         rtol_mesa, nmax_astem, nmax_mesa, mosaic_vars_aa_type
+         rtol_mesa, nmax_astem, nmax_mesa, mosaic_vars_aa_type,                         &
+         all_solid, jsolid, ptol_mol_astem, jcano3, jcacl2                               !FAB: crystallization gate
 
     use module_data_mosaic_asecthp, only: isize_of_ibin, itype_of_ibin,dcen_sect       ! TBD
-    
+
     use module_mosaic_ext,        only: aerosol_water_up, aerosol_phase_state, &
-                                        calc_dry_n_wet_aerosol_props, conform_electrolytes
-    
+                                        calc_dry_n_wet_aerosol_props, conform_electrolytes, &
+                                        calculate_XT, adjust_solid_aerosol, aerosol_water    !FAB: crystallization gate
+
     use module_mosaic_support, only: mosaic_err_mess
 
     implicit none
@@ -350,6 +352,18 @@ contains
     real(r8) :: sigma_water
     real(r8) :: tot_so4_in, tot_no3_in, tot_cl_in, tot_nh4_in, tot_na_in, tot_ca_in, tot_lim2_in
     real(r8) :: XT
+
+    !FAB: crystallization/efflorescence gate (mirrors module_mosaic_astem.F90 and the stock
+    ! MOSAIC "MESA" subroutine in module_mosaic_ext.F90:558-618). This routine previously called
+    ! aerosol_phase_state directly, which always solves the liquid-phase (ZSR) water content with
+    ! no check against the crystallization RH (CRH/MDRH) — unlike the full ASTEM gas-exchange
+    ! solver used by modal_aero_amicphys_intr, which checks aH2O < CRH first and forces a dry,
+    ! zero-water state below it. That gap meant this "water-only" diagnostic path (used by
+    ! modal_aero_wateruptake_dr) could show spurious water at very low RH for aerosol that is not
+    ! in the excess/free-sulfate regime (XT>=1), where MOSAIC's crystallization point is nonzero.
+    real(r8) :: CRH, sum_dum
+    real(r8), dimension(nbin_a_max) :: CRH_sv
+    integer :: jsalt_dum, j_index, js, je
 
     real(r8), dimension(MDRH_T_NUM) :: MDRH_T
     real(r8), dimension(Nanion ) :: na_Ma, xeq_a
@@ -431,12 +445,51 @@ contains
     do ibin = 1, nbin_a
        call check_aerosol_mass(ibin, jaerosolstate,jphase,aer,num_a, mass_dry_a)
        jaerosolstate_bgn(ibin) = jaerosolstate(ibin)
-       
+
        if(jaerosolstate(ibin) .ne. no_aerosol) then!goto 500
-          
+
           call conform_electrolytes(jtotal,ibin,XT,aer,gas,electrolyte,total_species,tot_cl_in)        ! conforms aer(jtotal) to a valid aerosol
           call check_aerosol_mass(ibin,jaerosolstate,jphase,aer,num_a, mass_dry_a) ! check mass again after conform_electrolytes
-          
+
+          !FAB: crystallization RH (CRH) for this bin, same formula as MESA/ASTEM.
+          ! epercent(:,jtotal,ibin) must be computed here (from electrolyte(:,jtotal,ibin),
+          ! just set by conform_electrolytes above) since aerosol_phase_state does not compute it.
+          sum_dum = 0.0_r8
+          do je = 1, nelectrolyte
+             sum_dum = sum_dum + electrolyte(je,jtotal,ibin)
+          enddo
+          if (sum_dum .eq. 0.0_r8) sum_dum = 1.0_r8
+          do je = 1, nelectrolyte
+             epercent(je,jtotal,ibin) = 100.0_r8*electrolyte(je,jtotal,ibin)/sum_dum
+          enddo
+
+          jsalt_dum = 0
+          do js = 1, nsalt
+             if (epercent(js,jtotal,ibin) .gt. ptol_mol_astem) jsalt_dum = jsalt_dum + jsalt_index(js)
+          enddo
+
+          if ( (epercent(jcano3,jtotal,ibin) .gt. ptol_mol_astem) .or. &
+               (epercent(jcacl2,jtotal,ibin) .gt. ptol_mol_astem) ) then
+             CRH = 0.0_r8   ! no crystallization or efflorescence point
+          else
+             CRH = 0.35_r8  ! default value
+          endif
+
+          if (jsalt_dum .eq. 0) then                          ! no salts or acids present
+             CRH = 0.0_r8
+             MDRH(ibin) = 0.0_r8
+          else if (XT .lt. 1.0_r8 .and. XT .gt. 0.0_r8) then   ! excess sulfate: always liquid, MDRH=0.0
+             MDRH(ibin) = 0.0_r8
+          else if (XT .ge. 2.0_r8 .or. XT .lt. 0.0_r8) then    ! sulfate poor
+             j_index = jsulf_poor(jsalt_dum)
+             MDRH(ibin) = MDRH_T(j_index)
+          else                                                 ! sulfate rich
+             j_index = jsulf_rich(jsalt_dum)
+             MDRH(ibin) = MDRH_T(j_index)
+          endif
+
+          CRH_sv(ibin) = min(CRH, MDRH(ibin)/100.0_r8)
+
           jaerosolstate_bgn(ibin) = jaerosolstate(ibin)
           if(jaerosolstate(ibin) .ne. no_aerosol)then !goto 500    ! ignore this bin
              
@@ -495,16 +548,31 @@ contains
   do ibin = 1, nbin_a
 
      if(jaerosolstate(ibin) .ne. no_aerosol)then
-        call aerosol_phase_state( ibin, jaerosolstate, jphase,  &
-             aer, jhyst_leg, electrolyte, epercent, kel, activity, mc, num_a, mass_wet_a, &
-             mass_dry_a, mass_soluble_a, vol_dry_a, vol_wet_a, water_a, water_a_hyst,  &
-             water_a_up, aH2O_a, aH2O, ma, gam, & !BALLI
-             log_gamZ, zc, za, gam_ratio, xeq_a, na_Ma, nc_Mc, xeq_c,              & ! RAZ deleted a_zsr
-             mw_electrolyte, partial_molar_vol, sigma_soln, T_K, RH_pc, mw_aer_mac,    &
-             dens_aer_mac, sigma_water, Keq_ll, Keq_sl, MW_a, MW_c, growth_factor, MDRH, &
-             MDRH_T, molality0, rtol_mesa, jsalt_present, jsalt_index, jsulf_poor,     &
-             jsulf_rich, phi_salt_old,                                      &
-             kappa_nonelectro, mosaic_vars_aa )
+
+        !FAB: crystallization gate. Below CRH the aerosol is dry (matches
+        ! module_mosaic_astem.F90's step-1 check, which the full ASTEM gas-exchange
+        ! solver already applies but this water-only diagnostic path did not).
+        ! mhyst_force_up only resolves the CRH..MDRH hysteresis window (see below),
+        ! it does not override crystallization below CRH -- same as in ASTEM/MESA.
+        if (aH2O .lt. CRH_sv(ibin)) then
+           jaerosolstate(ibin) = all_solid
+           jphase(ibin)    = jsolid
+           jhyst_leg(ibin) = jhyst_lo
+           call adjust_solid_aerosol(ibin,jphase,aer,jhyst_leg,electrolyte,epercent,water_a)
+           water_a(ibin) = aerosol_water(jtotal,ibin,jaerosolstate,jphase,jhyst_leg,   &
+                electrolyte,aer,kappa_nonelectro,num_a,mass_dry_a,mass_soluble_a,aH2O,molality0)
+        else
+           call aerosol_phase_state( ibin, jaerosolstate, jphase,  &
+                aer, jhyst_leg, electrolyte, epercent, kel, activity, mc, num_a, mass_wet_a, &
+                mass_dry_a, mass_soluble_a, vol_dry_a, vol_wet_a, water_a, water_a_hyst,  &
+                water_a_up, aH2O_a, aH2O, ma, gam, & !BALLI
+                log_gamZ, zc, za, gam_ratio, xeq_a, na_Ma, nc_Mc, xeq_c,              & ! RAZ deleted a_zsr
+                mw_electrolyte, partial_molar_vol, sigma_soln, T_K, RH_pc, mw_aer_mac,    &
+                dens_aer_mac, sigma_water, Keq_ll, Keq_sl, MW_a, MW_c, growth_factor, MDRH, &
+                MDRH_T, molality0, rtol_mesa, jsalt_present, jsalt_index, jsulf_poor,     &
+                jsulf_rich, phi_salt_old,                                      &
+                kappa_nonelectro, mosaic_vars_aa )
+        end if
 
         call calc_dry_n_wet_aerosol_props(                                &
            ibin, jaerosolstate, aer, electrolyte, water_a, num_a,         &  ! input
