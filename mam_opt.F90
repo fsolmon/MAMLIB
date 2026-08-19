@@ -12,7 +12,8 @@ module mam_opt
 
   use netcdf
   use precision_mod,   only:  r8 => f8
- 
+  use mam_utils,       only:  masterproc
+
   implicit none
   private
   
@@ -497,7 +498,7 @@ end subroutine get_species_refind
       return
     end if
     
-    write(*,'(A,I3,A,A)') 'Reading species optics file [', ispec, ']: ', trim(filename)
+    if (masterproc) write(*,'(A,I3,A,A)') 'Reading species optics file [', ispec, ']: ', trim(filename)
     
     ! Get dimensions from NetCDF
     ierr = nf90_inq_dimid(ncid, 'rh_idx', dimid)
@@ -524,7 +525,7 @@ end subroutine get_species_refind
     end if
     ierr = nf90_inquire_dimension(ncid, dimid, len=spcopp(ispec)%nlwbands)
     
-    write(*,'(A,3I4)') '  Dimensions: nrh, nswbands, nlwbands = ', &
+    if (masterproc) write(*,'(A,3I4)') '  Dimensions: nrh, nswbands, nlwbands = ', &
                        spcopp(ispec)%nrh, spcopp(ispec)%nswbands, spcopp(ispec)%nlwbands
     
     ! ========================================================================
@@ -570,50 +571,50 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'rh', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%rh)
-      write(*,*) '  Read rh'
+      if (masterproc) write(*,*) '  Read rh'
     else
-      write(*,*) '  WARNING: rh variable not found'
+      if (masterproc) write(*,*) '  WARNING: rh variable not found'
     end if
     
     ! Read refractive indices (SW)
     ierr = nf90_inq_varid(ncid, 'refindex_real_aer_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%refindex_real_sw)
-      write(*,*) '  Read refindex_real_aer_sw'
+      if (masterproc) write(*,*) '  Read refindex_real_aer_sw'
     else
-      write(*,*) '  WARNING: refindex_real_aer_sw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_real_aer_sw not found'
     end if
     
     ierr = nf90_inq_varid(ncid, 'refindex_im_aer_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%refindex_im_sw)
-      write(*,*) '  Read refindex_im_aer_sw'
+      if (masterproc) write(*,*) '  Read refindex_im_aer_sw'
     else
-      write(*,*) '  WARNING: refindex_im_aer_sw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_im_aer_sw not found'
     end if
     
     ! Read refractive indices (LW)
     ierr = nf90_inq_varid(ncid, 'refindex_real_aer_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%refindex_real_lw)
-      write(*,*) '  Read refindex_real_aer_lw'
+      if (masterproc) write(*,*) '  Read refindex_real_aer_lw'
     else
-      write(*,*) '  WARNING: refindex_real_aer_lw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_real_aer_lw not found'
     end if
     
     ierr = nf90_inq_varid(ncid, 'refindex_im_aer_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%refindex_im_lw)
-      write(*,*) '  Read refindex_im_aer_lw'
+      if (masterproc) write(*,*) '  Read refindex_im_aer_lw'
     else
-      write(*,*) '  WARNING: refindex_im_aer_lw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_im_aer_lw not found'
     end if
     
     ! Read physical properties
     ierr = nf90_inq_varid(ncid, 'density_aer', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%specdens)
-      write(*,'(A,F8.2,A)') '  Species density: ', spcopp(ispec)%specdens, ' kg/m³'
+      if (masterproc) write(*,'(A,F8.2,A)') '  Species density: ', spcopp(ispec)%specdens, ' kg/m³'
     else
       spcopp(ispec)%specdens = 1770.0_r8  ! Default
     end if
@@ -636,25 +637,25 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'ext_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%ext_sw)
-      write(*,*) '  Read ext_sw'
+      if (masterproc) write(*,*) '  Read ext_sw'
     end if
     
     ierr = nf90_inq_varid(ncid, 'ssa_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%ssa_sw)
-      write(*,*) '  Read ssa_sw'
+      if (masterproc) write(*,*) '  Read ssa_sw'
     end if
     
     ierr = nf90_inq_varid(ncid, 'asm_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%asm_sw)
-      write(*,*) '  Read asm_sw'
+      if (masterproc) write(*,*) '  Read asm_sw'
     end if
     
     ierr = nf90_inq_varid(ncid, 'abs_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%abs_sw)
-      write(*,*) '  Read abs_sw'
+      if (masterproc) write(*,*) '  Read abs_sw'
     end if
     
     ! Read optical properties (LW)
@@ -665,25 +666,25 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'ext_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%ext_lw)
-      write(*,'(A,2ES12.4)') '  Read ext_lw  (min/max): ', &
+      if (masterproc) write(*,'(A,2ES12.4)') '  Read ext_lw  (min/max): ', &
             minval(spcopp(ispec)%ext_lw), maxval(spcopp(ispec)%ext_lw)
     else
-      write(*,*) '  WARNING: ext_lw not found in file — table stays zero'
+      if (masterproc) write(*,*) '  WARNING: ext_lw not found in file — table stays zero'
     end if
 
     ierr = nf90_inq_varid(ncid, 'abs_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, spcopp(ispec)%abs_lw)
-      write(*,'(A,2ES12.4)') '  Read abs_lw  (min/max): ', &
+      if (masterproc) write(*,'(A,2ES12.4)') '  Read abs_lw  (min/max): ', &
             minval(spcopp(ispec)%abs_lw), maxval(spcopp(ispec)%abs_lw)
     else
-      write(*,*) '  WARNING: abs_lw not found in file — table stays zero'
+      if (masterproc) write(*,*) '  WARNING: abs_lw not found in file — table stays zero'
       ! Fallback: if only ext_lw was present, copy it into abs_lw.
       ! In the LW, aerosol scattering is negligible so ext ≈ abs; this
       ! avoids a silent zero result when the file only provides ext_lw.
       if (maxval(spcopp(ispec)%ext_lw) > 0._r8) then
         spcopp(ispec)%abs_lw = spcopp(ispec)%ext_lw
-        write(*,*) '  INFO: abs_lw filled from ext_lw as fallback'
+        if (masterproc) write(*,*) '  INFO: abs_lw filled from ext_lw as fallback'
       end if
     end if
     
@@ -692,18 +693,22 @@ end subroutine get_species_refind
     ! Any table that stayed at zero was either missing from the file or the
     ! read failed silently — this is the most common source of "crazy" output.
     ! -----------------------------------------------------------------------
-    write(*,'(A,I3,A)') '  --- spcopp(', ispec, ') post-read summary ---'
-    write(*,'(A,2ES12.4)') '    ext_sw  (min/max): ', minval(spcopp(ispec)%ext_sw), maxval(spcopp(ispec)%ext_sw)
-    write(*,'(A,2ES12.4)') '    abs_sw  (min/max): ', minval(spcopp(ispec)%abs_sw), maxval(spcopp(ispec)%abs_sw)
-    write(*,'(A,2ES12.4)') '    ext_lw  (min/max): ', minval(spcopp(ispec)%ext_lw), maxval(spcopp(ispec)%ext_lw)
-    write(*,'(A,2ES12.4)') '    abs_lw  (min/max): ', minval(spcopp(ispec)%abs_lw), maxval(spcopp(ispec)%abs_lw)
+    if (masterproc) then
+      write(*,'(A,I3,A)') '  --- spcopp(', ispec, ') post-read summary ---'
+      write(*,'(A,2ES12.4)') '    ext_sw  (min/max): ', minval(spcopp(ispec)%ext_sw), maxval(spcopp(ispec)%ext_sw)
+      write(*,'(A,2ES12.4)') '    abs_sw  (min/max): ', minval(spcopp(ispec)%abs_sw), maxval(spcopp(ispec)%abs_sw)
+      write(*,'(A,2ES12.4)') '    ext_lw  (min/max): ', minval(spcopp(ispec)%ext_lw), maxval(spcopp(ispec)%ext_lw)
+      write(*,'(A,2ES12.4)') '    abs_lw  (min/max): ', minval(spcopp(ispec)%abs_lw), maxval(spcopp(ispec)%abs_lw)
+    end if
     if (maxval(spcopp(ispec)%abs_lw) == 0._r8) then
-      write(*,'(A,I3,A)') '  *** WARNING: spcopp(', ispec, ')%abs_lw is all-zero — LW optical depths will be zero!'
-      write(*,*)            '      Check that the species file contains abs_lw or ext_lw.'
+      if (masterproc) then
+        write(*,'(A,I3,A)') '  *** WARNING: spcopp(', ispec, ')%abs_lw is all-zero — LW optical depths will be zero!'
+        write(*,*)            '      Check that the species file contains abs_lw or ext_lw.'
+      end if
     end if
 
     if (local_status == 0) then
-      write(*,'(A,I3,A)') 'Successfully read species optics file into spcopp(', ispec, ')'
+      if (masterproc) write(*,'(A,I3,A)') 'Successfully read species optics file into spcopp(', ispec, ')'
     end if
     
 999 continue
@@ -769,7 +774,7 @@ end subroutine get_species_refind
       return
     end if
     
-    write(*,'(A,I3,A,A)') 'Reading modal optics file [', imode, ']: ', trim(filename)
+    if (masterproc) write(*,'(A,I3,A,A)') 'Reading modal optics file [', imode, ']: ', trim(filename)
     
     ! ========================================================================
     ! GET DIMENSIONS FROM NETCDF
@@ -815,7 +820,7 @@ end subroutine get_species_refind
       ierr = nf90_inquire_dimension(ncid, dimid, len=modopp(imode)%nrefi)
     end if
 
-    write(*,'(A,5I4)') '  Dimensions: nswbands, nlwbands, ncoef, nrefr, nrefi = ', &
+    if (masterproc) write(*,'(A,5I4)') '  Dimensions: nswbands, nlwbands, ncoef, nrefr, nrefi = ', &
                        modopp(imode)%nswbands, modopp(imode)%nlwbands, modopp(imode)%ncoef, &
                        modopp(imode)%nrefr, modopp(imode)%nrefi
     
@@ -845,7 +850,7 @@ end subroutine get_species_refind
     allocate(modopp(imode)%absplw(modopp(imode)%ncoef, modopp(imode)%nrefr, &
                                    modopp(imode)%nrefi, 1, modopp(imode)%nlwbands))
     
-    write(*,*) '  Allocated all arrays with REVERSED dimension order'
+    if (masterproc) write(*,*) '  Allocated all arrays with REVERSED dimension order'
     
     ! ========================================================================
     ! READ VARIABLES FROM NETCDF
@@ -855,16 +860,16 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'sigmag', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%sigma_logr_aer)
-      write(*,'(A,F6.2)') '  Geometric std dev: ', modopp(imode)%sigma_logr_aer
+      if (masterproc) write(*,'(A,F6.2)') '  Geometric std dev: ', modopp(imode)%sigma_logr_aer
     else
-      write(*,*) '  WARNING: sigmag not found'
+      if (masterproc) write(*,*) '  WARNING: sigmag not found'
       modopp(imode)%sigma_logr_aer = 1.8_r8  ! Default value
     end if
     
     ierr = nf90_inq_varid(ncid, 'dgnumlo', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%dgnumlo)
-      write(*,'(A,ES10.3,A)') '  Diameter lower: ', modopp(imode)%dgnumlo, ' m'
+      if (masterproc) write(*,'(A,ES10.3,A)') '  Diameter lower: ', modopp(imode)%dgnumlo, ' m'
     else
       modopp(imode)%dgnumlo = 0.0_r8
     end if
@@ -872,7 +877,7 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'dgnumhi', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%dgnumhi)
-      write(*,'(A,ES10.3,A)') '  Diameter upper: ', modopp(imode)%dgnumhi, ' m'
+      if (masterproc) write(*,'(A,ES10.3,A)') '  Diameter upper: ', modopp(imode)%dgnumhi, ' m'
     else
       modopp(imode)%dgnumhi = 0.0_r8
     end if
@@ -881,38 +886,40 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'refindex_real_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%refrtabsw)
-      write(*,*) '  Read refindex_real_sw grid'
-      ! Print first band's grid
-      write(*,'(A,10F6.2)') '    Band 1 values: ', modopp(imode)%refrtabsw(:,1)
+      if (masterproc) then
+        write(*,*) '  Read refindex_real_sw grid'
+        ! Print first band's grid
+        write(*,'(A,10F6.2)') '    Band 1 values: ', modopp(imode)%refrtabsw(:,1)
+      end if
     else
-      write(*,*) '  WARNING: refindex_real_sw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_real_sw not found'
     end if
     
     ierr = nf90_inq_varid(ncid, 'refindex_im_sw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%refitabsw)
-      write(*,*) '  Read refindex_im_sw grid'
+      if (masterproc) write(*,*) '  Read refindex_im_sw grid'
     else
-      write(*,*) '  WARNING: refindex_im_sw not found'
+      if (masterproc) write(*,*) '  WARNING: refindex_im_sw not found'
     end if
     
     ierr = nf90_inq_varid(ncid, 'refindex_real_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%refrtablw)
-      write(*,*) '  Read refindex_real_lw grid'
+      if (masterproc) write(*,*) '  Read refindex_real_lw grid'
     end if
     
     ierr = nf90_inq_varid(ncid, 'refindex_im_lw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%refitablw)
-      write(*,*) '  Read refindex_im_lw grid'
+      if (masterproc) write(*,*) '  Read refindex_im_lw grid'
     end if
     
     ! Read polynomial coefficient tables (SW)
     ierr = nf90_inq_varid(ncid, 'extpsw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%extpsw)
-      write(*,*) '  Read extpsw polynomial table'
+      if (masterproc) write(*,*) '  Read extpsw polynomial table'
     else
       write(*,*) '  ERROR: extpsw not found - this is required!'
       local_status = -1
@@ -921,7 +928,7 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'abspsw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%abspsw)
-      write(*,*) '  Read abspsw polynomial table'
+      if (masterproc) write(*,*) '  Read abspsw polynomial table'
     else
       write(*,*) '  ERROR: abspsw not found - this is required!'
       local_status = -1
@@ -930,7 +937,7 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'asmpsw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%asmpsw)
-      write(*,*) '  Read asmpsw polynomial table'
+      if (masterproc) write(*,*) '  Read asmpsw polynomial table'
     else
       write(*,*) '  ERROR: asmpsw not found - this is required!'
       local_status = -1
@@ -940,19 +947,19 @@ end subroutine get_species_refind
     ierr = nf90_inq_varid(ncid, 'extplw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%extplw)
-      write(*,*) '  Read extplw polynomial table'
+      if (masterproc) write(*,*) '  Read extplw polynomial table'
     end if
     
     ierr = nf90_inq_varid(ncid, 'absplw', varid)
     if (ierr == NF90_NOERR) then
       ierr = nf90_get_var(ncid, varid, modopp(imode)%absplw)
-      write(*,*) '  Read absplw polynomial table'
+      if (masterproc) write(*,*) '  Read absplw polynomial table'
     end if
-    
+
     if (local_status == 0) then
-      write(*,'(A,I3)') 'Successfully read modal optics file into modopp(', imode, ')'
+      if (masterproc) write(*,'(A,I3)') 'Successfully read modal optics file into modopp(', imode, ')'
     else
-      write(*,*) 'WARNING: Some required variables missing from modal file'
+      if (masterproc) write(*,*) 'WARNING: Some required variables missing from modal file'
     end if
     
 999 continue
