@@ -875,9 +875,6 @@ subroutine modal_aero_calcsize_sub(state, ptend, deltat, pbuf, do_adjust_in, &
             !
             ! now compute current dgn and v2n
             !
-            if (k==1 .and. n==1 .and. i<=3) &
-               write(6,'(a,3i4,3es12.4)') 'CALCSIZE_DBG i/k/n drv_a num_a dgncur=', &
-                  i,k,n, drv_a, num_a, dgncur_a(i,k,n)
             if (drv_a > 0.0_r8) then
                if (num_a <= drv_a*v2nxx) then
                   dgncur_a(i,k,n) = dgnxx
