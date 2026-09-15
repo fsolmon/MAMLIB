@@ -3440,7 +3440,7 @@ contains
     real(r8) :: tworootpi, root2, beta
     parameter (tworootpi = 3.5449077, root2 = 1.4142135, beta = 2.0)
     real(r8) :: cdum, Dp, Fkn, Kn, lnsg, lnDpgn, lnDp, speed,   &
-                sumghq, tmpa
+                sumghq, tmpa, tmpa_hcl
     real(r8) :: xghq(nghq), wghq(nghq)                           ! quadrature abscissae and weights
     real(r8) :: accom(ngas_aerchtot)                             ! keep local
     real(r8) :: freepath(ngas_aerchtot)                          ! keep local
@@ -3476,7 +3476,8 @@ if ( use_cam5mam_accom_coefs > 0 ) then
         accom(ihno3_g)  = accom_coef_hno3   !FAB: from mam_utils (defaults: 0.10)
         accom(ihcl_g)   = accom_coef_hcl    !FAB: from mam_utils (defaults: 0.10)
         accom(inh3_g)   = accom_coef_nh3    !FAB: from mam_utils (defaults: 0.092)
-        tmpa = accom(ihno3_g)  ! non-dust HNO3/HCl base for per-bin dust blending
+        tmpa     = accom(ihno3_g)  ! non-dust HNO3 base for per-bin dust blending
+        tmpa_hcl = accom(ihcl_g)   ! non-dust HCl  base for per-bin dust blending (FAB: was wrongly using tmpa/HNO3)
     end if
 !FAB --MW
 
@@ -3571,9 +3572,14 @@ if ( use_cam5mam_accom_coefs > 0 ) then
                 Dp = exp(lnDp)
                 Kn = 2.*freepath(iv)/Dp
 !FAB  beta-blend for HNO3/HCl: exact dust/non-dust mixing at each Kn
-                if (iv == ihno3_g .or. iv == ihcl_g) then
+                if (iv == ihno3_g) then
                    Fkn = f_dust * fuchs_sutugin(Kn, accom_dust) &
                        + (1.0_r8 - f_dust) * fuchs_sutugin(Kn, tmpa)
+                else if (iv == ihcl_g) then
+                   ! FAB: use HCl's own base coefficient (accom_coef_hcl via tmpa_hcl),
+                   !      not HNO3's tmpa - was previously silently discarding accom_coef_hcl
+                   Fkn = f_dust * fuchs_sutugin(Kn, accom_dust) &
+                       + (1.0_r8 - f_dust) * fuchs_sutugin(Kn, tmpa_hcl)
                 else
                    Fkn = fuchs_sutugin(Kn, accom(iv))
                 end if
