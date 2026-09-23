@@ -284,7 +284,8 @@ subroutine modal_aero_amicphys_intr(                             &
                         wetdens_host,                            &
                         qaerwat,                                 &
                         hplus_aer_out,                           & ! FAB
-                        relhum_in                                ) ! FAB: optional grid-cell mean RH
+                        relhum_in,                               & ! FAB: optional grid-cell mean RH
+                        lstrat_in                                ) ! FAB: optional stratosphere mask
 
 
 ! !USES:
@@ -356,6 +357,11 @@ implicit none
               hplus_aer_out(pcols,pver,ntot_amode)                     ! aerosol H+ concentration per mode [mol/L]
    real(r8), intent(in),    optional :: &
               relhum_in(pcols,pver)                                     ! FAB: grid-cell mean RH [0-1] from State_Met%RH/100
+   ! FAB (MAM-decouple-std, strat gate): .true. in stratospheric boxes
+   ! (GC State_Met%InStratMeso). There, gas-aerosol exchange (MOSAIC),
+   ! renaming and nucleation are switched off; coagulation is kept.
+   logical,  intent(in),    optional :: &
+              lstrat_in(pcols,pver)
 
 ! !DESCRIPTION: 
 ! calculates changes to gas and aerosol TMRs (tracer mixing ratios) from
@@ -398,6 +404,7 @@ implicit none
    integer :: nsubarea, ncldy_subarea
 
    logical :: do_cond, do_rename, do_newnuc, do_coag
+   logical :: do_cond_ik, do_rename_ik, do_newnuc_ik   ! FAB: per-box (strat gate)
    logical :: iscldy_subarea(maxsubarea)
 
    character(len=fieldname_len+3) :: fieldname
@@ -921,6 +928,26 @@ main_i_loop: &
 
       lund = iulog  ! for cambox, iulog=93 at this point
 
+! FAB (MAM-decouple-std, strat gate): above the tropopause the aerosol
+! chemistry belongs to UCX (STD SO4 = stratospheric sulfate, STD NIT = NAT).
+! MAM aerosol stays prognostic there (transport, settling, coagulation) but
+! does no gas-aerosol exchange (no MOSAIC call, no HNO3/HCl/NH3/H2SO4
+! uptake), no nucleation and no renaming. Primary-carbon aging is tied to
+! do_cond and is therefore off as well. Hconc_sav/awater are reset so that
+! no pH/water from the previous box is reported for this one.
+      do_cond_ik   = do_cond
+      do_rename_ik = do_rename
+      do_newnuc_ik = do_newnuc
+      if ( present(lstrat_in) ) then
+         if ( lstrat_in(i,k) ) then
+            do_cond_ik   = .false.
+            do_rename_ik = .false.
+            do_newnuc_ik = .false.
+            Hconc_sav(:) = 0.0_r8
+            awater(:)    = 0.0_r8
+         end if
+      end if
+
 !      ubroutine mam_amicphys_1gridcell(          &
 !        do_cond,            do_rename,           &
 !        do_newnuc,          do_coag,             &
@@ -940,8 +967,8 @@ main_i_loop: &
 
 ! ++MW
       call mam_amicphys_1gridcell(                &
-         do_cond,             do_rename,          &
-         do_newnuc,           do_coag,            &
+         do_cond_ik,          do_rename_ik,       &   ! FAB: strat gate
+         do_newnuc_ik,        do_coag,            &
          nstep,    lchnk,     i,         k,       &
          latndx(i),           lonndx(i), lund,    &
          loffset,  deltat,                        &
