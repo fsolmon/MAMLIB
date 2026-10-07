@@ -414,14 +414,14 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
        mixed, no_aerosol, jtotal, jhyst_lo, Nanion, nrxn_aer_gl, nrxn_aer_ll,           &
        nrxn_aer_sg, nrxn_aer_sl, nsalt, MDRH_T_NUM, jsulf_poor_NUM, jsulf_rich_NUM,    &
        jnh4cl, jnh4no3,                                                            &!TBD
-       iso4_a, inh3_g, ihno3_g, ihcl_g,                                            & ! RAZ 2/2/2015: bugfix
+       iso4_a, inh3_g, ihno3_g, ihcl_g, ina_a, ica_a, jcaco3,                      & ! RAZ 2/2/2015: bugfix; FAB ina_a ica_a jcaco3
 !++DBG
        ino3_a, inh4_a,                                                             & ! for ASTEM substep diagnostics
 !--DBG
        mosaic_vars_aa_type
 
 !++DBG
-  use mam_utils, only: iulog
+  use mam_utils, only: iulog, alk_closure_p, alk_a0_na, alk_ca_na
 !--DBG
   use module_mosaic_ext, only: do_full_deliquescence,form_electrolytes
   
@@ -489,6 +489,8 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
   real(r8) :: sum1, sum2, sum3, sum4, sum4a, sum4b, h_flux_s
   real(r8) :: phi_nh4no3_s, phi_nh4cl_s,kelvin_nh4cl,Keq_nh4no3
   real(r8) :: sumkg_nh3,sumkg_hno3,sumkg_hcl 				! RAZ 2/2/2015: bugfix
+  logical  :: lcase1_alk                     !FAB: alkalinity closure (box-ssalk)
+  real(r8) :: falk_ss, g_alk, ss_share
   real(r8), dimension(nbin_a_max) :: kgfrac_nh3,kgfrac_hno3,kgfrac_hcl	! RAZ 2/2/2015: bugfix
   real(r8), dimension(ngas_volatile) :: sum_phi_volatile_s, sum_phi_volatile_l, sum_phi_volatile
   real(r8), dimension(ngas_volatile,nbin_a_max) :: df_gas_s,df_gas_l
@@ -562,6 +564,8 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
 ! RAZ 2/2/2015: end bugfix
 
 
+     lcase1_alk = (jaerosolstate(ibin) .ne. no_aerosol) .and. caco3_case1(ibin, electrolyte)  !FAB
+
      if(jaerosolstate(ibin) .eq. all_solid)then
         jphase(ibin) = jsolid
         call ASTEM_flux_dry(ibin, phi_nh4no3_s, phi_nh4cl_s, ieqblm_ASTEM,           &
@@ -591,6 +595,23 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
              Kp_nh4cl, Kp_nh4no3, Keq_ll, Keq_gl, Keq_sg, MW_c, MW_a, total_species,     &
              tot_cl_in, molality0, kappa_nonelectro, mosaic_vars_aa )	! jphase(ibin) will be determined in this subr.
 
+     endif
+
+     !FAB (box-ssalk, devnotes 11.25.28): size-spread closure for the case-1 titration. MOSAIC holds one
+     ! CaCO3 pool per bin and titrates it at a constant (zero-order) rate down to zero; within a real mode
+     ! the small particles finish first, so the total uptake falls with the remaining alkalinity fraction f:
+     ! R/R0 = f**p. Recomputed every ASTEM sub-step (kg is frozen over dtchem, flux_s is not).
+     if (lcase1_alk .and. alk_closure_p > 0.0_r8) then
+        if (aer(ina_a,jtotal,ibin) > 0.0_r8) then
+           ss_share = 1.0_r8
+           if (aer(ica_a,jtotal,ibin) > 0.0_r8) &
+              ss_share = min(1.0_r8, alk_ca_na*aer(ina_a,jtotal,ibin)/aer(ica_a,jtotal,ibin))
+           falk_ss = 2.0_r8*electrolyte(jcaco3,jsolid,ibin)*ss_share / (alk_a0_na*aer(ina_a,jtotal,ibin))
+           falk_ss = max(0.0_r8, min(1.0_r8, falk_ss))
+           g_alk   = falk_ss**alk_closure_p
+           flux_s(ihno3_g,ibin) = flux_s(ihno3_g,ibin)*g_alk
+           flux_s(ihcl_g, ibin) = flux_s(ihcl_g, ibin)*g_alk
+        endif
      endif
      
 501 continue
