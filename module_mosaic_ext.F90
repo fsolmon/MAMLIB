@@ -3416,7 +3416,7 @@ contains
 
     use module_mosaic_support, only: mosaic_err_mess
     !FAB: accom coefficients from mam_utils (overridable at init time, later via Input_Opt)
-    use mam_utils, only: accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3
+    use mam_utils, only: accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3, accom_dust_li2012
 
     implicit none
     
@@ -3552,6 +3552,8 @@ if ( use_cam5mam_accom_coefs > 0 ) then
           dust_mass    = max( aer(ioin_a,jtotal,ibin), 0.0_r8 ) * mw_aer_mac(ioin_a)
           aer_tot_mass = max( sum( aer(1:naer,jtotal,ibin) * mw_aer_mac(1:naer) ), 1.e-20_r8 )
           f_dust       = min( dust_mass / aer_tot_mass, 1.0_r8 )
+!FAB  accom_dust_li2012 = 0: no dust-specific accommodation, base coefficients on all particles (Wu et al. 2025)
+          if (accom_dust_li2012 < 1) f_dust = 0.0_r8
           if(aH2O .lt. 0.8)then
              accom_dust = (0.0018*aH2O)/((1.0-aH2O)*(1.0 + 7.0*aH2O))
              accom_dust = max( accom_dust, 1.8e-5_r8 )
@@ -3603,7 +3605,7 @@ if ( use_cam5mam_accom_coefs > 0 ) then
           cdum  = 6.283185*Dp_wet_a(ibin)*num_a(ibin)
 
 ! RH-dependent accommodation coefficient for HNO3 on dust particles (Li et al. ACP, 12, 7591-7607, 2012).
-	    if(aer(ica_a,jtotal,ibin) .gt. 0.)then ! dust particles
+	    if(aer(ica_a,jtotal,ibin) .gt. 0. .and. accom_dust_li2012 > 0)then ! dust particles
     	      if(aH2O .lt. 0.8)then
                 accom(ihno3_g)   = (0.0018*aH2O)/((1.0-aH2O)*(1.0 + 7.0*aH2O))
                 accom(ihno3_g)   = max( accom(ihno3_g), 1.8e-5_r8 )  ! avoid accom = 0 which causes problems
