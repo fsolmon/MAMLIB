@@ -1623,7 +1623,8 @@ end do
                 l_h2so4g, l_soag, l_hno3g, l_so2g, l_hclg, l_nh3g, &
                 mdo_mambox, mdo_gaschem, mdo_cloudchem, mdo_coldstart, &
                 mdo_gasaerexch, mdo_rename, mdo_newnuc, mdo_coag, &
-                accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3  !FAB
+                accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3, accom_dust_li2012, &  !FAB
+                alk_closure_p, alk_a0_na, alk_ca_na
         use chem_mods, only : adv_mass,imozart
         use wv_saturation, only: qsat, gestbl
         use modal_aero_data
@@ -1660,7 +1661,8 @@ end do
       namelist /time_input/ mam_dt, mam_nstep
       namelist /cntl_input/mdo_mambox, mdo_gaschem, mdo_cloudchem,  mdo_gasaerexch, &
                             mdo_rename, mdo_newnuc, mdo_coag, mdo_coldstart, &
-                            accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3  !FAB
+                            accom_coef_h2so4, accom_coef_hno3, accom_coef_hcl, accom_coef_nh3, accom_dust_li2012, &  !FAB
+                            alk_closure_p, alk_a0_na, alk_ca_na
       namelist /met_input/ press, rh_clea, mrhmin, mrhmax, mtmin,mtmax
       ! number concentration is no longer a namelist input: it is derived at cold
       ! start from masstot/mf* and the mode's default size distribution (see below)
@@ -1700,6 +1702,11 @@ open (UNIT = 101, FILE = 'namelist', STATUS = 'OLD')
           read (101, met_input)
           read (101, chem_input)
 close (101)
+if (masterproc) then
+   write(*,'(a,4f8.4,a,i2)') ' MAM_INIT: accom h2so4/hno3/hcl/nh3 =', accom_coef_h2so4, accom_coef_hno3, &
+        accom_coef_hcl, accom_coef_nh3, '  accom_dust_li2012 =', accom_dust_li2012
+   write(*,'(a,3es11.3)') ' MAM_INIT: alkalinity closure p, a0_na, ca_na =', alk_closure_p, alk_a0_na, alk_ca_na
+end if
 !
 if (mdo_coldstart < 1) then
   if (masterproc) then 

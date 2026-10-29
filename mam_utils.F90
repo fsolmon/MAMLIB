@@ -34,6 +34,17 @@ MODULE MAM_UTILS
   real(r8), save :: accom_coef_hno3  = 0.100_r8
   real(r8), save :: accom_coef_hcl   = 0.100_r8
   real(r8), save :: accom_coef_nh3   = 0.092_r8
+  ! HNO3/HCl accommodation on dust in MOSAIC: 1 = RH-dependent Li et al. (2012) value blended by dust
+  ! mass fraction (Wu et al. 2022 MTC_WGT); 0 = base coefficients on all particles (Wu et al. 2025)
+  integer,  save :: accom_dust_li2012 = 1
+
+  ! Sea-salt alkalinity size-spread closure (box-ssalk, devnotes 11.25.28): while a bin is in MOSAIC
+  ! case 1 (CaCO3 > 0) its HNO3/HCl uptake is scaled by f**alk_closure_p, f = 2 CaCO3_ss / (alk_a0_na Na)
+  ! = fraction of the emitted sea-salt alkalinity left; CaCO3_ss = CaCO3 x min(1, alk_ca_na Na / Ca).
+  ! p = 0 (default) = original MOSAIC (zero-order titration); 1 = first-order (STD-like); 1.33 = size closure
+  real(r8), save :: alk_closure_p = 0.0_r8
+  real(r8), save :: alk_a0_na     = 4.52e-3_r8   ! eq alkalinity per mol Na at emission
+  real(r8), save :: alk_ca_na     = 0.0551_r8    ! pseudo-Ca mol Ca per mol Na at emission
 
   integer :: pcols 
   integer :: pver 

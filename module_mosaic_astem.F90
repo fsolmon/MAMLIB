@@ -9,6 +9,34 @@
   contains
 
 
+!FAB (2026-10-01): CaCO3 test for the ASTEM "case 1" branch (alkaline particle:
+! pH fixed at 7, irreversible HNO3/HCl uptake into the SOLID phase).
+! The stock tests were `electrolyte(jcaco3,jsolid,ibin) .gt. 0.0` (wet, dry)
+! and `epercent(jcaco3,jsolid,ibin) .gt. 0.0` (mixed). After titration, the
+! chain of min()/subtract steps in form_electrolytes (form_caso4 ... form_cacl2)
+! can leave a round-off residual CaCO3 (seen: 8e-16 nmol/m3 next to ~160
+! nmol/m3 of other electrolytes, i.e. ~1e-17 relative). That residual kept the
+! bin in case 1 on every call, but case 1 puts the acid uptake in the solid
+! phase, where form_electrolytes(jsolid) finds no free cation (the residual is
+! far too small) and degas_hno3/degas_hcl send it straight back to the gas.
+! Mass is conserved and no warning is raised, but the bin is FROZEN: no HNO3/
+! HCl exchange and pH stuck at 7 for as long as the residual survives
+! (GCMAMBOX, sea salt with CaCO3, dt = 60 s: coarse mode frozen for 3.5 h).
+! Fix: case 1 only if CaCO3 is a non-negligible part of the bin's inorganic
+! electrolytes. The residual itself is left in place (inert insoluble solid,
+! exactly as before), so no mass is moved. Tolerance 1e-10 is far above the
+! round-off level and far below any physical CaCO3 (fresh dust; fresh sea salt
+! with the MAM alkalinity carrier: ~2e-3 of the electrolytes).
+  logical function caco3_case1(ibin, electrolyte)
+    use module_data_mosaic_aero, only: nelectrolyte, nbin_a_max, jsolid, jtotal, jcaco3
+    integer,  intent(in) :: ibin
+    real(r8), intent(in), dimension(nelectrolyte,3,nbin_a_max) :: electrolyte
+    real(r8), parameter  :: caco3_reltol = 1.0e-10_r8
+    caco3_case1 = electrolyte(jcaco3,jsolid,ibin) .gt.                          &
+                  caco3_reltol*sum(electrolyte(1:jcaco3,jtotal,ibin))
+  end function caco3_case1
+
+
 ! feb 22. new flux_mix
 
 !***********************************************************************
@@ -386,14 +414,14 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
        mixed, no_aerosol, jtotal, jhyst_lo, Nanion, nrxn_aer_gl, nrxn_aer_ll,           &
        nrxn_aer_sg, nrxn_aer_sl, nsalt, MDRH_T_NUM, jsulf_poor_NUM, jsulf_rich_NUM,    &
        jnh4cl, jnh4no3,                                                            &!TBD
-       iso4_a, inh3_g, ihno3_g, ihcl_g,                                            & ! RAZ 2/2/2015: bugfix
+       iso4_a, inh3_g, ihno3_g, ihcl_g, ina_a, ica_a, jcaco3,                      & ! RAZ 2/2/2015: bugfix; FAB ina_a ica_a jcaco3
 !++DBG
        ino3_a, inh4_a,                                                             & ! for ASTEM substep diagnostics
 !--DBG
        mosaic_vars_aa_type
 
 !++DBG
-  use mam_utils, only: iulog
+  use mam_utils, only: iulog, alk_closure_p, alk_a0_na, alk_ca_na
 !--DBG
   use module_mosaic_ext, only: do_full_deliquescence,form_electrolytes
   
@@ -461,6 +489,8 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
   real(r8) :: sum1, sum2, sum3, sum4, sum4a, sum4b, h_flux_s
   real(r8) :: phi_nh4no3_s, phi_nh4cl_s,kelvin_nh4cl,Keq_nh4no3
   real(r8) :: sumkg_nh3,sumkg_hno3,sumkg_hcl 				! RAZ 2/2/2015: bugfix
+  logical  :: lcase1_alk                     !FAB: alkalinity closure (box-ssalk)
+  real(r8) :: falk_ss, g_alk, ss_share
   real(r8), dimension(nbin_a_max) :: kgfrac_nh3,kgfrac_hno3,kgfrac_hcl	! RAZ 2/2/2015: bugfix
   real(r8), dimension(ngas_volatile) :: sum_phi_volatile_s, sum_phi_volatile_l, sum_phi_volatile
   real(r8), dimension(ngas_volatile,nbin_a_max) :: df_gas_s,df_gas_l
@@ -534,6 +564,8 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
 ! RAZ 2/2/2015: end bugfix
 
 
+     lcase1_alk = (jaerosolstate(ibin) .ne. no_aerosol) .and. caco3_case1(ibin, electrolyte)  !FAB
+
      if(jaerosolstate(ibin) .eq. all_solid)then
         jphase(ibin) = jsolid
         call ASTEM_flux_dry(ibin, phi_nh4no3_s, phi_nh4cl_s, ieqblm_ASTEM,           &
@@ -563,6 +595,23 @@ subroutine ASTEM_semi_volatiles( iprint_input,  dtchem, jaerosolstate,          
              Kp_nh4cl, Kp_nh4no3, Keq_ll, Keq_gl, Keq_sg, MW_c, MW_a, total_species,     &
              tot_cl_in, molality0, kappa_nonelectro, mosaic_vars_aa )	! jphase(ibin) will be determined in this subr.
 
+     endif
+
+     !FAB (box-ssalk, devnotes 11.25.28): size-spread closure for the case-1 titration. MOSAIC holds one
+     ! CaCO3 pool per bin and titrates it at a constant (zero-order) rate down to zero; within a real mode
+     ! the small particles finish first, so the total uptake falls with the remaining alkalinity fraction f:
+     ! R/R0 = f**p. Recomputed every ASTEM sub-step (kg is frozen over dtchem, flux_s is not).
+     if (lcase1_alk .and. alk_closure_p > 0.0_r8) then
+        if (aer(ina_a,jtotal,ibin) > 0.0_r8) then
+           ss_share = 1.0_r8
+           if (aer(ica_a,jtotal,ibin) > 0.0_r8) &
+              ss_share = min(1.0_r8, alk_ca_na*aer(ina_a,jtotal,ibin)/aer(ica_a,jtotal,ibin))
+           falk_ss = 2.0_r8*electrolyte(jcaco3,jsolid,ibin)*ss_share / (alk_a0_na*aer(ina_a,jtotal,ibin))
+           falk_ss = max(0.0_r8, min(1.0_r8, falk_ss))
+           g_alk   = falk_ss**alk_closure_p
+           flux_s(ihno3_g,ibin) = flux_s(ihno3_g,ibin)*g_alk
+           flux_s(ihcl_g, ibin) = flux_s(ihcl_g, ibin)*g_alk
+        endif
      endif
      
 501 continue
@@ -1301,7 +1350,7 @@ subroutine ASTEM_flux_wet(ibin, ieqblm_ASTEM, sfc_a, df_gas_s, df_gas_l,        
   !-------------------------------------------------------------------
   ! CASE 1: caco3 > 0 absorb acids (and indirectly degas co2)
   
-  if(electrolyte(jcaco3,jsolid,ibin) .gt. 0.0)then
+  if(caco3_case1(ibin, electrolyte))then   !FAB: was electrolyte(jcaco3,jsolid,ibin) .gt. 0.0 (round-off residual froze the bin)
      call ASTEM_flux_wet_case1(ibin,ieqblm_ASTEM,sfc_a,df_gas_s,flux_s,          &
           phi_volatile_s,integrate,jphase,kg,gas,mc,Keq_ll)
      return
@@ -2160,7 +2209,7 @@ subroutine ASTEM_flux_dry(ibin, phi_nh4no3_s,phi_nh4cl_s,ieqblm_ASTEM,          
   !-----------------------------------------------------------------
   ! CASE 1:  caco3 > 0 absorb all acids (and indirectly degas co2)
 
-  if(electrolyte(jcaco3,jsolid,ibin) .gt. 0.0)then
+  if(caco3_case1(ibin, electrolyte))then   !FAB: was electrolyte(jcaco3,jsolid,ibin) .gt. 0.0 (round-off residual froze the bin)
      call ASTEM_flux_dry_case1(ibin,ieqblm_ASTEM,sfc_a,df_gas_s,flux_s,          &
           phi_volatile_s,integrate,kg,gas)
 
@@ -2924,7 +2973,7 @@ subroutine ASTEM_flux_mix(ibin, phi_nh4no3_s, phi_nh4cl_s, ieqblm_ASTEM, idry_ca
   !-----------------------------------------------------------------
   ! MIXED CASE 1:  caco3 > 0 absorb all acids (and indirectly degas co2)
 
-  if(epercent(jcaco3,jsolid,ibin) .gt. 0.0)then
+  if(caco3_case1(ibin, electrolyte))then   !FAB: was epercent(jcaco3,jsolid,ibin) .gt. 0.0 (round-off residual froze the bin)
      jphase(ibin) = jliquid
      call ASTEM_flux_wet_case1(ibin,ieqblm_ASTEM,sfc_a,df_gas_s,flux_s,          &
           phi_volatile_s,integrate,jphase,kg,gas,mc,Keq_ll)
