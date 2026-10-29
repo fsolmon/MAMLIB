@@ -493,9 +493,9 @@ end subroutine get_species_refind
     if (ierr /= NF90_NOERR) then
       write(*,*) 'ERROR opening file: ', trim(filename)
       write(*,*) 'NetCDF error: ', trim(nf90_strerror(ierr))
-      local_status = ierr
-      if (present(status)) status = local_status
-      return
+      ! Fatal: missing optics tables lead to a segfault later in mam_aero_sw/lw
+      write(0,*) 'ERROR opening optics file: ', trim(filename), ' (', trim(nf90_strerror(ierr)), ')'
+      error stop 'read_species_optics_file: cannot open optics file'
     end if
     
     if (masterproc) write(*,'(A,I3,A,A)') 'Reading species optics file [', ispec, ']: ', trim(filename)
@@ -769,9 +769,9 @@ end subroutine get_species_refind
     if (ierr /= NF90_NOERR) then
       write(*,*) 'ERROR opening file: ', trim(filename)
       write(*,*) 'NetCDF error: ', trim(nf90_strerror(ierr))
-      local_status = ierr
-      if (present(status)) status = local_status
-      return
+      ! Fatal: missing optics tables lead to a segfault later in mam_aero_sw/lw
+      write(0,*) 'ERROR opening optics file: ', trim(filename), ' (', trim(nf90_strerror(ierr)), ')'
+      error stop 'read_modal_optics_file: cannot open optics file'
     end if
     
     if (masterproc) write(*,'(A,I3,A,A)') 'Reading modal optics file [', imode, ']: ', trim(filename)
